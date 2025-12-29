@@ -2,6 +2,10 @@
 
 🚀 **Android 上的 Flutter IDE** - 基於 Termux 提供完整的 Flutter 開發環境
 
+> 📖 **文檔**
+> - [開發指南](DEVELOPMENT.md) - 專案結構、待辦任務
+> - [背景與資源](docs/CONTEXT.md) - 資源研究、技術決策、參考專案
+
 ## 專案願景
 
 結合 [termux-flutter-wsl](https://github.com/ImL1s/termux-flutter-wsl) 專案，在 Android 設備上實現完整的 Flutter IDE：
