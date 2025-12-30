@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart';
+import '../termux/termux_providers.dart';
 
 class TerminalWidget extends ConsumerStatefulWidget {
   const TerminalWidget({super.key});
@@ -136,26 +137,52 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
     );
   }
 
-  void _executeCommand(String command) {
+  void _executeCommand(String command) async {
     if (command.trim().isEmpty) return;
     
     _terminal.write('$command\r\n');
     _inputController.clear();
     
-    // Simulate command execution
-    if (command.startsWith('flutter ')) {
-      _terminal.write('Executing: $command\r\n');
-      _terminal.write('(This will connect to Termux when integrated)\r\n');
-    } else if (command == 'clear') {
+    // 使用 Termux Bridge 執行指令
+    final bridge = ref.read(termuxBridgeProvider);
+    
+    if (command == 'clear') {
       _terminal.eraseDisplay();
-    } else if (command == 'help') {
+      _terminal.write('\$ ');
+      _focusNode.requestFocus();
+      return;
+    }
+    
+    if (command == 'help') {
       _terminal.write('Available commands:\r\n');
-      _terminal.write('  flutter run       - Run Flutter app\r\n');
-      _terminal.write('  flutter build apk - Build APK\r\n');
+      _terminal.write('  flutter run       - Run Flutter app via Termux\r\n');
+      _terminal.write('  flutter build apk - Build APK via Termux\r\n');
       _terminal.write('  flutter doctor    - Check Flutter setup\r\n');
       _terminal.write('  clear             - Clear terminal\r\n');
+      _terminal.write('\r\n');
+      _terminal.write('\$ ');
+      _focusNode.requestFocus();
+      return;
+    }
+    
+    // 檢查 Termux 是否已安裝
+    final isInstalled = await bridge.isTermuxInstalled();
+    if (!isInstalled) {
+      _terminal.write('\x1B[31mError: Termux is not installed.\x1B[0m\r\n');
+      _terminal.write('Please install Termux from F-Droid or GitHub.\r\n');
+      _terminal.write('\$ ');
+      _focusNode.requestFocus();
+      return;
+    }
+    
+    // 執行指令
+    _terminal.write('Executing via Termux: $command\r\n');
+    final result = await bridge.executeCommand(command);
+    
+    if (result.success) {
+      _terminal.write('\x1B[32m${result.stdout}\x1B[0m\r\n');
     } else {
-      _terminal.write('Command: $command\r\n');
+      _terminal.write('\x1B[31m${result.stderr}\x1B[0m\r\n');
     }
     
     _terminal.write('\$ ');

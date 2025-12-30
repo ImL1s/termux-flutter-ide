@@ -26,6 +26,7 @@ dependencies:
   
   # Terminal & Process
   xterm: ^4.0.0
+  flutter_resizable_container: ^4.2.0
 
 dev_dependencies:
   flutter_test:
