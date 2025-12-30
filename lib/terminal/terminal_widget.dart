@@ -60,9 +60,22 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
 
       _terminal.write('Connected! Authenticating...\r\n');
 
+      // Dynamic Method: Get Termux UID from OS
+      final bridge = ref.read(termuxBridgeProvider);
+      final uid = await bridge.getTermuxUid();
+      String username = 'u0_a251'; // Fallback
+
+      if (uid != null) {
+        // Android UID mapping: 10xxx -> u0_axxx
+        // Valid for User 0. Simplified logic.
+        if (uid >= 10000) {
+          username = 'u0_a${uid - 10000}';
+        }
+      }
+
       _client = SSHClient(
         socket,
-        username: 'u0_a251', // Termux user
+        username: username,
         onPasswordRequest: () {
           return 'termux'; // Auto-filled password from our bootstrap script
         },

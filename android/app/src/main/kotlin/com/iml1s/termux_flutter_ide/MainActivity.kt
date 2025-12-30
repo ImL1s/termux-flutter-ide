@@ -30,7 +30,10 @@ class MainActivity : FlutterActivity() {
                 "isTermuxInstalled" -> {
                     result.success(isTermuxInstalled())
                 }
-                "executeCommand" -> {
+                "getTermuxUid" -> {
+                    result.success(getTermuxUid())
+                }
+                "executeTermuxCommand" -> {
                     val command = call.argument<String>("command")
                     val workingDirectory = call.argument<String>("workingDirectory")
                     val background = call.argument<Boolean>("background") ?: false
@@ -57,6 +60,18 @@ class MainActivity : FlutterActivity() {
             true
         } catch (e: PackageManager.NameNotFoundException) {
             false
+        }
+    }
+
+    private fun getTermuxUid(): Int? {
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                packageManager.getPackageUid(TERMUX_PACKAGE, 0)
+            } else {
+                packageManager.getApplicationInfo(TERMUX_PACKAGE, 0).uid
+            }
+        } catch (e: Exception) {
+            null
         }
     }
     

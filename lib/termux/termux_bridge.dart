@@ -79,6 +79,26 @@ class TermuxBridge {
     return executeCommand('flutter doctor');
   }
 
+  Future<String?> getTermuxPrefix() async {
+    try {
+      final String? prefix = await _channel.invokeMethod('getTermuxPrefix');
+      return prefix;
+    } on PlatformException catch (e) {
+      print("Failed to get Termux prefix: '${e.message}'.");
+      return null;
+    }
+  }
+
+  Future<int?> getTermuxUid() async {
+    try {
+      final int? uid = await _channel.invokeMethod('getTermuxUid');
+      return uid;
+    } on PlatformException catch (e) {
+      print("Failed to get Termux UID: '${e.message}'.");
+      return null;
+    }
+  }
+
   /// 開啟 Termux 終端機
   Future<bool> openTermux() async {
     try {
@@ -117,7 +137,7 @@ class TermuxBridge {
 
     // Dart String:
     const cmd =
-        'sh -c "termux-wake-lock && pkg update -y && pkg install openssh -y && echo -e \'termux\\ntermux\' | passwd && sshd && echo \'Done\'"';
+        'sh -c "pkg update -y && pkg install openssh -y && echo -e \'termux\\ntermux\' | passwd && sshd && echo \'Done\'"';
 
     return executeCommand(cmd, background: true);
   }
