@@ -37,9 +37,6 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
 
   Future<void> _checkAndConnect() async {
     final installed = await ref.read(termuxInstalledProvider.future);
-    // DEBUG: Always write status to terminal
-    _terminal.write('Debug: Termux Installed Check = $installed\r\n');
-
     if (!installed) {
       if (mounted) {
         setState(() {
