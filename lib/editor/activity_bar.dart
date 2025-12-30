@@ -2,38 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../ai/ai_providers.dart';
+import '../theme/app_theme.dart';
 import 'command_palette.dart';
 
-enum ActivityItem {
-  explorer,
-  search,
-  sourceControl,
-  extensions,
-  none,
-}
+enum ActivityItem { explorer, search, sourceControl, extensions, none }
 
 /// Selected Activity Item Notifier
 class SelectedActivityNotifier extends Notifier<ActivityItem> {
   @override
-  ActivityItem build() => ActivityItem.explorer;
-  
+  ActivityItem build() => ActivityItem.none;
+
   void select(ActivityItem item) {
     state = item;
+  }
+
+  void toggle(ActivityItem item) {
+    if (state == item) {
+      state = ActivityItem.none;
+    } else {
+      state = item;
+    }
   }
 }
 
 /// Selected Activity Item Provider (Left Sidebar)
-final selectedActivityProvider = NotifierProvider<SelectedActivityNotifier, ActivityItem>(SelectedActivityNotifier.new);
-
-/// Action to toggle left sidebar activity item
-final toggleActivityProvider = Provider.family<void, ActivityItem>((ref, item) {
-  final current = ref.read(selectedActivityProvider);
-  if (current == item) {
-    ref.read(selectedActivityProvider.notifier).select(ActivityItem.none);
-  } else {
-    ref.read(selectedActivityProvider.notifier).select(item);
-  }
-});
+final selectedActivityProvider =
+    NotifierProvider<SelectedActivityNotifier, ActivityItem>(
+      SelectedActivityNotifier.new,
+    );
 
 class ActivityBar extends ConsumerWidget {
   const ActivityBar({super.key});
@@ -45,7 +41,7 @@ class ActivityBar extends ConsumerWidget {
 
     return Container(
       width: 48,
-      color: const Color(0xFF181825), // Catppuccin Mantle
+      color: AppTheme.activityBarBg, // Themed
       child: Column(
         children: [
           const SizedBox(height: 8),
@@ -55,7 +51,9 @@ class ActivityBar extends ConsumerWidget {
             icon: Icons.copy_all_outlined,
             tooltip: 'Explorer',
             isSelected: selected == ActivityItem.explorer,
-            onTap: () => ref.read(toggleActivityProvider(ActivityItem.explorer)),
+            onTap: () => ref
+                .read(selectedActivityProvider.notifier)
+                .toggle(ActivityItem.explorer),
           ),
           _buildActivityIcon(
             context,
@@ -63,7 +61,9 @@ class ActivityBar extends ConsumerWidget {
             icon: Icons.search,
             tooltip: 'Search',
             isSelected: selected == ActivityItem.search,
-            onTap: () => ref.read(toggleActivityProvider(ActivityItem.search)),
+            onTap: () => ref
+                .read(selectedActivityProvider.notifier)
+                .toggle(ActivityItem.search),
           ),
           _buildActivityIcon(
             context,
@@ -71,7 +71,9 @@ class ActivityBar extends ConsumerWidget {
             icon: Icons.source_outlined,
             tooltip: 'Source Control',
             isSelected: selected == ActivityItem.sourceControl,
-            onTap: () => ref.read(toggleActivityProvider(ActivityItem.sourceControl)),
+            onTap: () => ref
+                .read(selectedActivityProvider.notifier)
+                .toggle(ActivityItem.sourceControl),
           ),
           const SizedBox(height: 16),
           _buildActivityIcon(
@@ -123,13 +125,18 @@ class ActivityBar extends ConsumerWidget {
           decoration: BoxDecoration(
             border: isSelected
                 ? const Border(
-                    left: BorderSide(color: Color(0xFFCBA6F7), width: 2),
+                    left: BorderSide(
+                      color: AppTheme.primary,
+                      width: 2,
+                    ), // Themed Border
                   )
                 : null,
           ),
           child: Icon(
             icon,
-            color: isSelected ? const Color(0xFFCBA6F7) : Colors.grey[600],
+            color: isSelected
+                ? AppTheme.textPrimary
+                : AppTheme.textDisabled, // Themed Icons
             size: 24,
           ),
         ),

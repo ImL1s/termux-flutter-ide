@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
+import '../theme/app_theme.dart';
 import 'search_providers.dart';
+import '../editor/editor_request_provider.dart'; // Import Request Provider
 
 class SearchWidget extends ConsumerStatefulWidget {
   const SearchWidget({super.key});
@@ -26,7 +28,7 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
     final resultsAsync = ref.watch(searchResultsProvider);
 
     return Container(
-      color: const Color(0xFF181825),
+      color: AppTheme.surface, // Themed
       child: Column(
         children: [
           // Header
@@ -34,14 +36,18 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
-                const Icon(Icons.search, size: 16, color: Color(0xFF00D4AA)),
+                const Icon(
+                  Icons.search,
+                  size: 16,
+                  color: AppTheme.secondary,
+                ), // Themed
                 const SizedBox(width: 8),
                 const Text(
                   'SEARCH',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey,
+                    color: AppTheme.textSecondary, // Themed
                     letterSpacing: 1,
                   ),
                 ),
@@ -49,7 +55,7 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
             ),
           ),
           const Divider(height: 1),
-          
+
           // Search Input
           Padding(
             padding: const EdgeInsets.all(8.0),
@@ -70,12 +76,15 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
                       )
                     : null,
                 filled: true,
-                fillColor: const Color(0xFF313244),
+                fillColor: AppTheme.surfaceVariant, // Themed
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 isDense: true,
               ),
               onChanged: (value) {
@@ -91,7 +100,7 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
               },
             ),
           ),
-          
+
           // Results
           Expanded(
             child: resultsAsync.when(
@@ -110,7 +119,7 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
       return const Center(
         child: Text(
           'Type to search in files',
-          style: TextStyle(color: Colors.grey),
+          style: TextStyle(color: AppTheme.textDisabled),
         ),
       );
     }
@@ -119,7 +128,7 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
       return const Center(
         child: Text(
           'No results found',
-          style: TextStyle(color: Colors.grey),
+          style: TextStyle(color: AppTheme.textDisabled),
         ),
       );
     }
@@ -135,7 +144,7 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
       itemBuilder: (context, index) {
         final filePath = groupedResults.keys.elementAt(index);
         final fileResults = groupedResults[filePath]!;
-        
+
         return _buildFileResultGroup(filePath, fileResults);
       },
     );
@@ -143,7 +152,7 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
 
   Widget _buildFileResultGroup(String filePath, List<SearchResult> results) {
     final fileName = filePath.split('/').last;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -171,7 +180,7 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF45475A),
+                  color: AppTheme.surfaceVariant, // Themed
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -202,15 +211,15 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
               width: 40,
               child: Text(
                 '${result.lineNumber}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey,
-                ),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ),
             // Line content with highlighted match
             Expanded(
-              child: _buildHighlightedText(result.lineContent, result.matchText),
+              child: _buildHighlightedText(
+                result.lineContent,
+                result.matchText,
+              ),
             ),
           ],
         ),
@@ -255,7 +264,14 @@ class _SearchWidgetState extends ConsumerState<SearchWidget> {
   void _openResult(SearchResult result) {
     ref.read(openFilesProvider.notifier).add(result.filePath);
     ref.read(currentFileProvider.notifier).select(result.filePath);
-    // TODO: Jump to line number in editor
+
+    // Request jump to line
+    // We delay slightly to allow file to open/load if it wasn't already
+    Future.delayed(const Duration(milliseconds: 100), () {
+      ref.read(editorRequestProvider.notifier).request(
+            JumpToLineRequest(result.filePath, result.lineNumber),
+          );
+    });
   }
 
   IconData _getFileIcon(String name) {

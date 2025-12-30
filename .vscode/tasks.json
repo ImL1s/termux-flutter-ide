@@ -1,0 +1,24 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build apk",
+            "type": "shell",
+            "command": "fvm flutter build apk",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "flutter clean",
+            "type": "shell",
+            "command": "fvm flutter clean"
+        },
+        {
+            "label": "flutter pub get",
+            "type": "shell",
+            "command": "fvm flutter pub get"
+        }
+    ]
+}

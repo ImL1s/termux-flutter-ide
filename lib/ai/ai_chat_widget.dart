@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'ai_providers.dart';
+import '../theme/app_theme.dart';
 
 class AIChatWidget extends ConsumerStatefulWidget {
   const AIChatWidget({super.key});
@@ -19,7 +20,7 @@ class _AIChatWidgetState extends ConsumerState<AIChatWidget> {
     _scrollController.dispose();
     super.dispose();
   }
-  
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -35,7 +36,7 @@ class _AIChatWidgetState extends ConsumerState<AIChatWidget> {
   void _sendMessage() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    
+
     _controller.clear();
     ref.read(sendMessageProvider(text));
     _scrollToBottom();
@@ -46,43 +47,52 @@ class _AIChatWidgetState extends ConsumerState<AIChatWidget> {
     final history = ref.watch(chatHistoryProvider);
 
     return Container(
-      color: const Color(0xFF1E1E2E), // Catppuccin Base
+      color: AppTheme.editorBg, // Themed
       child: Column(
         children: [
           // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: const BoxDecoration(
-              color: Color(0xFF181825), // Catppuccin Mantle
+              color: AppTheme.surface, // Themed
               border: Border(
-                bottom: BorderSide(color: Color(0xFF313244)),
+                bottom: BorderSide(color: AppTheme.surfaceVariant),
               ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.psychology, size: 16, color: Color(0xFFCBA6F7)),
+                const Icon(
+                  Icons.psychology,
+                  size: 16,
+                  color: AppTheme.primary,
+                ), // Themed
                 const SizedBox(width: 8),
                 const Text(
                   'AI ASSISTANT',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey,
+                    color: AppTheme.textSecondary, // Themed
                     letterSpacing: 1,
                   ),
                 ),
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.cleaning_services, size: 16),
-                  onPressed: () => ref.read(chatHistoryProvider.notifier).clear(),
+                  onPressed: () =>
+                      ref.read(chatHistoryProvider.notifier).clear(),
                   tooltip: 'Clear Chat',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  constraints: const BoxConstraints(
+                    minWidth: 24,
+                    minHeight: 24,
+                  ),
+                  color: AppTheme.textDisabled,
                 ),
               ],
             ),
           ),
-          
+
           // Chat List
           Expanded(
             child: ListView.builder(
@@ -95,15 +105,13 @@ class _AIChatWidgetState extends ConsumerState<AIChatWidget> {
               },
             ),
           ),
-          
+
           // Input Area
           Container(
             padding: const EdgeInsets.all(8),
             decoration: const BoxDecoration(
-              color: Color(0xFF181825),
-              border: Border(
-                top: BorderSide(color: Color(0xFF313244)),
-              ),
+              color: AppTheme.surface,
+              border: Border(top: BorderSide(color: AppTheme.surfaceVariant)),
             ),
             child: Row(
               children: [
@@ -112,21 +120,27 @@ class _AIChatWidgetState extends ConsumerState<AIChatWidget> {
                     controller: _controller,
                     maxLines: 4,
                     minLines: 1,
-                    style: const TextStyle(fontSize: 13),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.textPrimary,
+                    ),
                     decoration: const InputDecoration(
                       hintText: 'Ask AI anything...',
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide.none,
+                      hintStyle: TextStyle(color: AppTheme.textDisabled),
+                      border: OutlineInputBorder(borderSide: BorderSide.none),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       isDense: true,
                     ),
                     onSubmitted: (_) => _sendMessage(),
+                    cursorColor: AppTheme.primary,
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.send, color: Color(0xFFCBA6F7)),
+                  icon: const Icon(Icons.send, color: AppTheme.primary),
                   onPressed: _sendMessage,
                 ),
               ],
@@ -145,7 +159,7 @@ class _AIChatWidgetState extends ConsumerState<AIChatWidget> {
         padding: const EdgeInsets.all(12),
         constraints: const BoxConstraints(maxWidth: 260),
         decoration: BoxDecoration(
-          color: msg.isUser ? const Color(0xFF45475A) : const Color(0xFF313244),
+          color: msg.isUser ? AppTheme.surfaceVariant : AppTheme.surface,
           borderRadius: BorderRadius.circular(12).copyWith(
             bottomRight: msg.isUser ? const Radius.circular(0) : null,
             bottomLeft: !msg.isUser ? const Radius.circular(0) : null,
@@ -154,7 +168,7 @@ class _AIChatWidgetState extends ConsumerState<AIChatWidget> {
         child: SelectableText(
           msg.content,
           style: TextStyle(
-            color: msg.isUser ? Colors.white : const Color(0xFFCDD6F4),
+            color: msg.isUser ? AppTheme.textPrimary : AppTheme.textPrimary,
             fontSize: 13,
           ),
         ),

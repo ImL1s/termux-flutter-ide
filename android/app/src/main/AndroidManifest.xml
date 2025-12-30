@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Termux RUN_COMMAND permission -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND"/>
+    <!-- Required for SSH connection (even to localhost) -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     
     <application
         android:label="termux_flutter_ide"

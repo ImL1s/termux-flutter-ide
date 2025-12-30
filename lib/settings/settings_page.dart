@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'settings_providers.dart';
+import '../theme/app_theme.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -11,9 +12,9 @@ class SettingsPage extends ConsumerWidget {
     final editorTheme = ref.watch(editorThemeProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E2E),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF181825),
+        backgroundColor: AppTheme.surface,
         title: const Text('設定'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -26,7 +27,7 @@ class SettingsPage extends ConsumerWidget {
           // Font Size Section
           _buildSectionTitle('字體大小'),
           Card(
-            color: const Color(0xFF313244),
+            color: AppTheme.surfaceVariant,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -48,16 +49,16 @@ class SettingsPage extends ConsumerWidget {
                             icon: const Icon(Icons.remove_circle_outline),
                             onPressed: fontSize > FontSizeNotifier.minSize
                                 ? () => ref
-                                    .read(fontSizeProvider.notifier)
-                                    .setFontSize(fontSize - 1)
+                                      .read(fontSizeProvider.notifier)
+                                      .setFontSize(fontSize - 1)
                                 : null,
                           ),
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
                             onPressed: fontSize < FontSizeNotifier.maxSize
                                 ? () => ref
-                                    .read(fontSizeProvider.notifier)
-                                    .setFontSize(fontSize + 1)
+                                      .read(fontSizeProvider.notifier)
+                                      .setFontSize(fontSize + 1)
                                 : null,
                           ),
                         ],
@@ -68,7 +69,9 @@ class SettingsPage extends ConsumerWidget {
                     value: fontSize,
                     min: FontSizeNotifier.minSize,
                     max: FontSizeNotifier.maxSize,
-                    divisions: (FontSizeNotifier.maxSize - FontSizeNotifier.minSize).toInt(),
+                    divisions:
+                        (FontSizeNotifier.maxSize - FontSizeNotifier.minSize)
+                            .toInt(),
                     label: '${fontSize.toInt()} px',
                     onChanged: (value) {
                       ref.read(fontSizeProvider.notifier).setFontSize(value);
@@ -78,7 +81,7 @@ class SettingsPage extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E2E),
+                      color: AppTheme.background,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -99,7 +102,7 @@ class SettingsPage extends ConsumerWidget {
           // Editor Theme Section
           _buildSectionTitle('編輯器主題'),
           Card(
-            color: const Color(0xFF313244),
+            color: AppTheme.surfaceVariant,
             child: Column(
               children: EditorTheme.values.map((theme) {
                 return RadioListTile<EditorTheme>(
@@ -120,7 +123,7 @@ class SettingsPage extends ConsumerWidget {
           // About Section
           _buildSectionTitle('關於'),
           Card(
-            color: const Color(0xFF313244),
+            color: AppTheme.surfaceVariant,
             child: const ListTile(
               leading: Icon(Icons.info_outline),
               title: Text('Termux Flutter IDE'),
@@ -140,7 +143,7 @@ class SettingsPage extends ConsumerWidget {
         style: const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.bold,
-          color: Colors.white54,
+          color: AppTheme.textSecondary,
         ),
       ),
     );

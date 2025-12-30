@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/app_theme.dart';
 import '../core/providers.dart';
+import 'editor_providers.dart';
 
 class FileTabsWidget extends ConsumerWidget {
   const FileTabsWidget({super.key});
@@ -12,12 +14,12 @@ class FileTabsWidget extends ConsumerWidget {
 
     return Container(
       height: 40,
-      color: const Color(0xFF181825),
+      color: AppTheme.sideBarBg, // Themed Background
       child: openFiles.isEmpty
           ? const Center(
               child: Text(
                 'No files open',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(color: AppTheme.textDisabled),
               ),
             )
           : ListView.builder(
@@ -26,12 +28,15 @@ class FileTabsWidget extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final file = openFiles[index];
                 final isActive = file == currentFile;
-                
+
                 return _FileTab(
                   fileName: _getFileName(file),
                   isActive: isActive,
-                  onTap: () => ref.read(currentFileProvider.notifier).select(file),
-                  onClose: () => ref.read(openFilesProvider.notifier).remove(file),
+                  onTap: () =>
+                      ref.read(currentFileProvider.notifier).select(file),
+                  onClose: () =>
+                      ref.read(openFilesProvider.notifier).remove(file),
+                  isDirty: ref.watch(dirtyFilesProvider).contains(file),
                 );
               },
             ),
@@ -48,12 +53,14 @@ class _FileTab extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
   final VoidCallback onClose;
+  final bool isDirty;
 
   const _FileTab({
     required this.fileName,
     required this.isActive,
     required this.onTap,
     required this.onClose,
+    required this.isDirty,
   });
 
   @override
@@ -63,10 +70,14 @@ class _FileTab extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF1E1E2E) : Colors.transparent,
+          color: isActive
+              ? AppTheme.tabActiveBg
+              : AppTheme.tabInactiveBg, // Themed Tab BG
           border: Border(
             bottom: BorderSide(
-              color: isActive ? const Color(0xFF00D4AA) : Colors.transparent,
+              color: isActive
+                  ? AppTheme.tabBorder
+                  : Colors.transparent, // Themed Active Border
               width: 2,
             ),
           ),
@@ -77,24 +88,34 @@ class _FileTab extends StatelessWidget {
             Icon(
               _getFileIcon(fileName),
               size: 16,
-              color: isActive ? const Color(0xFF00D4AA) : Colors.grey,
+              color: isActive
+                  ? AppTheme.secondary
+                  : AppTheme.textDisabled, // Themed Icon
             ),
             const SizedBox(width: 8),
             Text(
               fileName,
               style: TextStyle(
-                color: isActive ? Colors.white : Colors.grey,
+                color: isActive
+                    ? AppTheme.textPrimary
+                    : AppTheme.textSecondary, // Themed Text
                 fontSize: 12,
               ),
             ),
             const SizedBox(width: 8),
             InkWell(
               onTap: onClose,
-              child: Icon(
-                Icons.close,
-                size: 14,
-                color: Colors.grey[600],
-              ),
+              child: isDirty
+                  ? const Icon(
+                      Icons.circle,
+                      size: 10,
+                      color: AppTheme.textPrimary,
+                    ) // Dirty Indicator
+                  : Icon(
+                      Icons.close,
+                      size: 14,
+                      color: AppTheme.textDisabled, // Themed Close Icon
+                    ),
             ),
           ],
         ),
@@ -104,7 +125,9 @@ class _FileTab extends StatelessWidget {
 
   IconData _getFileIcon(String fileName) {
     if (fileName.endsWith('.dart')) return Icons.flutter_dash;
-    if (fileName.endsWith('.yaml') || fileName.endsWith('.yml')) return Icons.settings;
+    if (fileName.endsWith('.yaml') || fileName.endsWith('.yml')) {
+      return Icons.settings;
+    }
     if (fileName.endsWith('.json')) return Icons.data_object;
     if (fileName.endsWith('.md')) return Icons.description;
     return Icons.insert_drive_file;

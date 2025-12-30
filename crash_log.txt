@@ -1,0 +1,15 @@
+--------- beginning of system
+12-30 16:27:25.902   552   849 W ActivityTaskManager: callingPackage for (uid=2000, pid=19036) has no WPC
+12-30 16:27:25.915   552   849 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_OVERRIDE
+12-30 16:27:25.916   552   849 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_FULLSCREEN_OVERRIDE
+12-30 16:27:25.916   552   849 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE
+--------- beginning of main
+12-30 16:27:25.917   552   849 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@917ce5fd does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+12-30 16:27:25.918   552   849 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_RESIZEABLE_ACTIVITY_OVERRIDES
+12-30 16:27:25.918   552   849 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_MIN_ASPECT_RATIO_OVERRIDE
+12-30 16:27:25.936   552   849 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=com.iml1s.termux_flutter_ide/.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=3
+12-30 16:27:25.956   783  1164 D KeyguardService: setOccluded(false)
+12-30 16:27:25.963   783  1164 D KeyguardViewMediator: setOccluded(false)
+12-30 16:27:25.963   783   783 D KeyguardViewMediator: handleSetOccluded(false)
+12-30 16:27:25.966   783   783 D KeyguardViewMediator: KeyguardViewMediator queue processing message: SET_OCCLUDED
+12-30 16:27:25.969   783   822 D WindowManagerShell: onActivityRestartAttempt: ComponentInfo{com.iml1s.termux_flutter_ide/com.iml1s.termux_flutter_ide.MainActivity}

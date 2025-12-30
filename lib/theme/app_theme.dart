@@ -21,9 +21,7 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: const Color(0xFF181825),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       dividerTheme: const DividerThemeData(
         color: Color(0xFF313244),
@@ -33,13 +31,32 @@ class AppTheme {
     );
   }
 
-  // Editor color scheme (Catppuccin Mocha inspired)
-  static const Color editorBackground = Color(0xFF1E1E2E);
-  static const Color editorLineNumbers = Color(0xFF6C7086);
-  static const Color editorSelection = Color(0xFF45475A);
-  static const Color editorCurrentLine = Color(0xFF313244);
-  
-  // Syntax colors
+  // VS Code Dark Modern / Catppuccin Mocha Palette
+  static const Color background = Color(0xFF1E1E2E); // Main BG
+  static const Color surface = Color(0xFF181825); // Sidebars, Panels
+  static const Color surfaceVariant = Color(0xFF313244); // Borders, Dividers
+
+  static const Color primary = Color(0xFFCBA6F7); // Accents (Purple)
+  static const Color secondary = Color(0xFF89B4FA); // Secondary (Blue)
+  static const Color tertiary = Color(0xFFA6E3A1); // Success/Strings (Green)
+  static const Color error = Color(0xFFF38BA8); // Error (Red)
+
+  // Component Specific
+  static const Color activityBarBg = Color(0xFF11111B); // Darker than sidebar
+  static const Color sideBarBg = Color(0xFF181825);
+  static const Color editorBg = Color(0xFF1E1E2E);
+  static const Color statusBarBg = Color(0xFF1F1F28); // Bottom bar (Blueish)
+
+  static const Color tabActiveBg = Color(0xFF1E1E2E);
+  static const Color tabInactiveBg = Color(0xFF181825);
+  static const Color tabBorder = Color(0xFFCBA6F7); // Active Tab Top Border
+
+  // Text Colors
+  static const Color textPrimary = Color(0xFFCDD6F4);
+  static const Color textSecondary = Color(0xFFA6ADC8);
+  static const Color textDisabled = Color(0xFF6C7086);
+
+  // Editor Syntax
   static const Color syntaxKeyword = Color(0xFFCBA6F7);
   static const Color syntaxString = Color(0xFFA6E3A1);
   static const Color syntaxNumber = Color(0xFFFAB387);

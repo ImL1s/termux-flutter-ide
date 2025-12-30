@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
+import '../theme/app_theme.dart';
 import 'file_operations.dart';
 
 class FileTreeWidget extends ConsumerStatefulWidget {
@@ -14,22 +15,19 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
   final Set<String> _expandedDirs = {};
   final Map<String, List<FileItem>> _cachedContents = {};
 
-
   @override
   Widget build(BuildContext context) {
     final currentDir = ref.watch(currentDirectoryProvider);
 
     return Container(
-      color: const Color(0xFF181825),
+      color: AppTheme.surface, // Themed
       child: Column(
         children: [
           // Header
           _buildHeader(currentDir),
           const Divider(height: 1),
           // File tree
-          Expanded(
-            child: _buildFileTree(currentDir),
-          ),
+          Expanded(child: _buildFileTree(currentDir)),
         ],
       ),
     );
@@ -37,12 +35,16 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
   Widget _buildHeader(String currentDir) {
     final projectName = currentDir.split('/').last;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          const Icon(Icons.folder_open, size: 16, color: Color(0xFF00D4AA)),
+          const Icon(
+            Icons.folder_open,
+            size: 16,
+            color: AppTheme.secondary,
+          ), // Themed
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -50,7 +52,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey,
+                color: AppTheme.textSecondary, // Themed
                 letterSpacing: 1,
               ),
               overflow: TextOverflow.ellipsis,
@@ -91,7 +93,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
   Widget _buildFileTree(String rootPath) {
     final items = _cachedContents[rootPath];
-    
+
     if (items == null) {
       _loadDirectory(rootPath);
       return const Center(child: CircularProgressIndicator());
@@ -99,7 +101,10 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
     if (items.isEmpty) {
       return const Center(
-        child: Text('Empty folder', style: TextStyle(color: Colors.grey)),
+        child: Text(
+          'Empty folder',
+          style: TextStyle(color: AppTheme.textDisabled),
+        ),
       );
     }
 
@@ -132,14 +137,16 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                isExpanded
+                    ? Icons.keyboard_arrow_down
+                    : Icons.keyboard_arrow_right,
                 size: 16,
                 color: Colors.grey,
               ),
               Icon(
                 isExpanded ? Icons.folder_open : Icons.folder,
                 size: 16,
-                color: const Color(0xFFF9E2AF),
+                color: AppTheme.syntaxType, // Themed Folder Icon
               ),
             ],
           ),
@@ -222,7 +229,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
     final ops = ref.read(fileOperationsProvider);
     final items = await ops.listDirectory(path);
-    
+
     // Sort: directories first, then alphabetically
     items.sort((a, b) {
       if (a.isDirectory && !b.isDirectory) return -1;
@@ -245,7 +252,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
   void _showContextMenu(FileItem item) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E2E),
+      backgroundColor: AppTheme.background, // Themed
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -292,7 +299,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
   void _showCreateDialog(String parentPath, {required bool isDirectory}) {
     final controller = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -317,7 +324,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
               final ops = ref.read(fileOperationsProvider);
               final path = '$parentPath/$name';
-              
+
               bool success;
               if (isDirectory) {
                 success = await ops.createDirectory(path);
@@ -342,15 +349,12 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
   void _showRenameDialog(FileItem item) {
     final controller = TextEditingController(text: item.name);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Rename'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-        ),
+        content: TextField(controller: controller, autofocus: true),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -363,9 +367,12 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
               final navigator = Navigator.of(context);
 
               final ops = ref.read(fileOperationsProvider);
-              final parentPath = item.path.substring(0, item.path.lastIndexOf('/'));
+              final parentPath = item.path.substring(
+                0,
+                item.path.lastIndexOf('/'),
+              );
               final newPath = '$parentPath/$newName';
-              
+
               final success = await ops.rename(item.path, newPath);
               if (success) {
                 _cachedContents.remove(parentPath);
@@ -397,7 +404,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
             onPressed: () async {
               final navigator = Navigator.of(context);
               final ops = ref.read(fileOperationsProvider);
-              
+
               bool success;
               if (item.isDirectory) {
                 success = await ops.deleteDirectory(item.path);
@@ -406,7 +413,10 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
               }
 
               if (success) {
-                final parentPath = item.path.substring(0, item.path.lastIndexOf('/'));
+                final parentPath = item.path.substring(
+                  0,
+                  item.path.lastIndexOf('/'),
+                );
                 _cachedContents.remove(parentPath);
                 _loadDirectory(parentPath);
               }
@@ -433,16 +443,14 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     final controller = TextEditingController(
       text: ref.read(currentDirectoryProvider),
     );
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Open Project'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            hintText: '/path/to/project',
-          ),
+          decoration: const InputDecoration(hintText: '/path/to/project'),
         ),
         actions: [
           TextButton(
