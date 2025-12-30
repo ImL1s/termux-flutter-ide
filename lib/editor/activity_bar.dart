@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../ai/ai_providers.dart';
 import 'command_palette.dart';
 
@@ -95,8 +96,8 @@ class ActivityBar extends ConsumerWidget {
             ref,
             icon: Icons.settings_outlined,
             tooltip: 'Settings',
-            isSelected: selected == ActivityItem.extensions,
-            onTap: () => ref.read(toggleActivityProvider(ActivityItem.extensions)),
+            isSelected: false,
+            onTap: () => context.push('/settings'),
           ),
           const SizedBox(height: 8),
         ],

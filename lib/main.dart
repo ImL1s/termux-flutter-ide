@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:termux_flutter_ide/theme/app_theme.dart';
 import 'package:termux_flutter_ide/editor/editor_page.dart';
+import 'package:termux_flutter_ide/settings/settings_page.dart';
 
 void main() {
   runApp(const ProviderScope(child: TermuxFlutterIDE()));
@@ -14,6 +15,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/',
       builder: (context, state) => const EditorPage(),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const SettingsPage(),
     ),
   ],
 );
