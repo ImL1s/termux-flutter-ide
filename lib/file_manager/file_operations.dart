@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dartssh2/dartssh2.dart';
 import '../termux/ssh_service.dart';
 
 /// File Operations Service
@@ -143,29 +145,50 @@ class FileOperations {
     }
   }
 
-  /// Read file content
+  /// Read file content via SFTP
   Future<String?> readFile(String path) async {
     try {
-      return await _exec('cat "$path"');
+      if (!_ssh.isConnected) await _ssh.connect();
+      final client = _ssh.client;
+      if (client == null) throw Exception('SSH client not available');
+
+      final sftp = await client.sftp();
+      try {
+        final file = await sftp.open(path);
+        final content = await file.readBytes();
+        return utf8.decode(content);
+      } finally {
+        sftp.close();
+      }
     } catch (e) {
       print('Read file failed: $e');
       return null;
     }
   }
 
-  /// Write file content
+  /// Write file content via SFTP
   Future<bool> writeFile(String path, String content) async {
     try {
-      // Escape special characters for shell
-      final escaped = content
-          .replaceAll('\\', '\\\\')
-          .replaceAll('"', '\\"')
-          .replaceAll('\$', '\\\$')
-          .replaceAll('`', '\\`');
+      if (!_ssh.isConnected) await _ssh.connect();
+      final client = _ssh.client;
+      if (client == null) throw Exception('SSH client not available');
 
-      await _exec('echo "$escaped" > "$path"');
+      final sftp = await client.sftp();
+      try {
+        final file = await sftp.open(
+          path,
+          mode: SftpFileOpenMode.write |
+              SftpFileOpenMode.create |
+              SftpFileOpenMode.truncate,
+        );
+        await file.writeBytes(utf8.encode(content));
+      } finally {
+        sftp.close();
+      }
+
       return true;
     } catch (e) {
+      print('Write file failed: $e');
       return false;
     }
   }

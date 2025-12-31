@@ -21,6 +21,8 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
     final statusAsync = ref.watch(gitStatusProvider);
     final projectPath = ref.watch(projectPathProvider);
 
+    final branchAsync = ref.watch(gitBranchProvider);
+
     if (projectPath == null) {
       return const Center(
         child: Column(
@@ -50,6 +52,53 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
         color: AppTheme.surface,
         child: Column(
           children: [
+            // Git Actions Toolbar
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              color: AppTheme.surface,
+              child: Row(
+                children: [
+                  const Icon(Icons.call_split, size: 16, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      branchAsync.asData?.value ?? '...',
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.sync, size: 16),
+                    tooltip: 'Pull',
+                    onPressed: () => _pull(currentDir),
+                    constraints:
+                        const BoxConstraints(minWidth: 28, minHeight: 28),
+                    padding: EdgeInsets.zero,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 16),
+                    tooltip: 'Push',
+                    onPressed: () => _push(currentDir),
+                    constraints:
+                        const BoxConstraints(minWidth: 28, minHeight: 28),
+                    padding: EdgeInsets.zero,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 16),
+                    tooltip: 'Refresh',
+                    onPressed: () {
+                      ref.invalidate(gitStatusProvider);
+                      ref.invalidate(gitBranchProvider);
+                    },
+                    constraints:
+                        const BoxConstraints(minWidth: 28, minHeight: 28),
+                    padding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
             // Tabs
             const TabBar(
               tabs: [
@@ -96,6 +145,43 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
         ),
       ),
     );
+  }
+
+  Future<void> _pull(String path) async {
+    final scaffold = ScaffoldMessenger.of(context);
+    scaffold.showSnackBar(const SnackBar(content: Text('Pulling...')));
+    try {
+      final result = await ref.read(gitServiceProvider).pull(path);
+      scaffold.hideCurrentSnackBar();
+      if (result.success) {
+        scaffold
+            .showSnackBar(SnackBar(content: Text('Pulled: ${result.stdout}')));
+      } else {
+        scaffold.showSnackBar(
+            SnackBar(content: Text('Pull Failed: ${result.stderr}')));
+      }
+      ref.invalidate(gitStatusProvider);
+      ref.invalidate(gitHistoryProvider);
+    } catch (e) {
+      scaffold.showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  Future<void> _push(String path) async {
+    final scaffold = ScaffoldMessenger.of(context);
+    scaffold.showSnackBar(const SnackBar(content: Text('Pushing...')));
+    try {
+      final result = await ref.read(gitServiceProvider).push(path);
+      scaffold.hideCurrentSnackBar();
+      if (result.success) {
+        scaffold.showSnackBar(const SnackBar(content: Text('Push Successful')));
+      } else {
+        scaffold.showSnackBar(
+            SnackBar(content: Text('Push Failed: ${result.stderr}')));
+      }
+    } catch (e) {
+      scaffold.showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
   }
 
   Widget _buildEmptyState(String currentDir) {

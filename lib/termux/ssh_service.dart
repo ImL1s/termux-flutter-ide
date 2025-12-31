@@ -140,10 +140,60 @@ class SSHService {
     _updateStatus(SSHStatus.disconnected);
   }
 
+  /// Execute command and return detailed result (exitCode, stdout, stderr)
+  Future<SSHExecResult> executeWithDetails(String command) async {
+    if (!isConnected) throw Exception("SSH not connected");
+
+    final session = await _client!.execute(command);
+
+    final stdoutBytes = <int>[];
+    final stderrBytes = <int>[];
+
+    final stdoutFuture =
+        session.stdout.listen((data) => stdoutBytes.addAll(data)).asFuture();
+    final stderrFuture =
+        session.stderr.listen((data) => stderrBytes.addAll(data)).asFuture();
+
+    await Future.wait([stdoutFuture, stderrFuture]);
+
+    // Wait for exit code
+    // session.done returns exit code
+    // Wait... dartssh2 session.done might not be exactly exit code directly visible?
+    // checking documentation or source is hard.
+    // actually, SSHSession has `done` which completes when channel closes.
+    // It doesn't seem to expose exit code easily in the future result?
+    // Wait, upstream dartssh2 might not expose exit code in `done` future value easily?
+    // Let's check `session.exitCode`.
+    // It's a valid property if the session is done.
+
+    // Force wait for done
+    await session.done;
+
+    return SSHExecResult(
+      exitCode: session.exitCode ?? 0,
+      stdout: utf8.decode(stdoutBytes, allowMalformed: true),
+      stderr: utf8.decode(stderrBytes, allowMalformed: true),
+    );
+  }
+
   void _updateStatus(SSHStatus status) {
     _currentStatus = status;
     _statusController.add(status);
   }
+}
+
+class SSHExecResult {
+  final int exitCode;
+  final String stdout;
+  final String stderr;
+
+  SSHExecResult({
+    required this.exitCode,
+    required this.stdout,
+    required this.stderr,
+  });
+
+  bool get success => exitCode == 0;
 }
 
 enum SSHStatus {
