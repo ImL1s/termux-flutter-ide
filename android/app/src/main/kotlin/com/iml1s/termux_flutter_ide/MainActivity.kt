@@ -109,8 +109,11 @@ class MainActivity : FlutterActivity() {
                 // 設定是否背景執行
                 putExtra(EXTRA_BACKGROUND, background)
                 
-                // 設定 session 行為：0 = 不做任何事, 1 = 聚焦, 2 = 新分頁
-                putExtra(EXTRA_SESSION_ACTION, if (background) 0 else 1)
+                // 設定 session 行為：
+                // "0" = RUN_AND_SWITCH_TO_NEW_SESSION (新分頁並顯示) - 這是前台執行
+                // "1" = RUN_AND_KEEP_CURRENT_SESSION (背景執行) - 這是後台執行
+                // 注意：這必須是 String 類型
+                putExtra(EXTRA_SESSION_ACTION, if (background) "1" else "0")
             }
             
             // 啟動服務

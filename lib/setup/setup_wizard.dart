@@ -489,7 +489,7 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
           ElevatedButton.icon(
             onPressed: () {
               // Use SetupService method to install Flutter
-              ref.read(setupServiceProvider.notifier).installFlutterViaBridge();
+              ref.read(setupServiceProvider.notifier).installFlutter();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('已開始安裝，請查看 Termux 應用程式'),
@@ -628,6 +628,12 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
               onPressed: () =>
                   ref.read(setupServiceProvider.notifier).nextStep(),
               child: const Text('下一步'),
+            )
+          else
+            TextButton(
+              onPressed: () =>
+                  ref.read(setupServiceProvider.notifier).nextStep(),
+              child: const Text('跳過 (使用 Bridge)'),
             ),
         ],
       );

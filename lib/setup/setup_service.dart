@@ -136,6 +136,9 @@ class SetupService extends Notifier<SetupState> {
               // Go to permission step first
               state = state.copyWith(currentStep: SetupStep.termuxPermission);
             }
+          } else {
+            // SSH not connected, but user chose to skip/continue (Bridge mode)
+            state = state.copyWith(currentStep: SetupStep.termuxPermission);
           }
         });
         break;
@@ -227,7 +230,8 @@ class SetupService extends Notifier<SetupState> {
 
     state = state.copyWith(
       isInstalling: true,
-      installLog: '正在啟動安裝腳本...\n請切換到 Termux 查看進度\n',
+      installLog:
+          '${state.installLog ?? ""}正在啟動安裝腳本 (Fallback)...\n請切換到 Termux 查看進度\n',
     );
 
     try {
