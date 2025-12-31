@@ -81,21 +81,57 @@ class SSHService {
     _client = SSHClient(
       socket,
       username: username,
-      onPasswordRequest: () => '123456',
+      onPasswordRequest: () => 'termux',
     );
 
     await _client!.authenticated;
   }
 
-  /// Execute a command and return output (stdout)
+  /// Execute a command and return output (stdout + stderr)
   Future<String> execute(String command) async {
     if (!isConnected) throw Exception("SSH not connected");
 
     final session = await _client!.execute(command);
-    // Properly collect and decode stdout from the stream
-    final stdoutBytes = await session.stdout
-        .fold<List<int>>([], (previous, element) => previous..addAll(element));
-    return utf8.decode(stdoutBytes);
+
+    // Properly collect and decode both stdout and stderr
+    final List<int> allBytes = [];
+
+    final stdoutFuture =
+        session.stdout.listen((data) => allBytes.addAll(data)).asFuture();
+    final stderrFuture =
+        session.stderr.listen((data) => allBytes.addAll(data)).asFuture();
+
+    await Future.wait([stdoutFuture, stderrFuture]);
+
+    return utf8.decode(allBytes, allowMalformed: true);
+  }
+
+  /// Execute a command and return output stream (stdout + stderr mixed)
+  Stream<String> executeStream(String command) async* {
+    if (!isConnected) throw Exception("SSH not connected");
+
+    final session = await _client!.execute(command);
+
+    final controller = StreamController<String>();
+    int activeStreams = 2;
+
+    void handleDone() {
+      activeStreams--;
+      if (activeStreams == 0) {
+        controller.close();
+      }
+    }
+
+    session.stdout
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .listen((data) => controller.add(data), onDone: handleDone);
+    session.stderr
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .listen((data) => controller.add(data), onDone: handleDone);
+
+    yield* controller.stream;
   }
 
   Future<void> disconnect() async {

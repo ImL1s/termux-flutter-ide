@@ -81,6 +81,15 @@ class MainActivity : FlutterActivity() {
         background: Boolean,
         result: MethodChannel.Result
     ) {
+        val permission = "com.termux.permission.RUN_COMMAND"
+        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(permission), 1001)
+            // Save pending command to execute after permission granted?
+            // For now, just return error asking user to retry
+            result.error("PERMISSION_DENIED", "Permission not granted. Please retry allow the permission.", null)
+            return
+        }
+
         try {
             // 使用 Termux RunCommandService 執行指令
             val intent = Intent().apply {
@@ -101,7 +110,7 @@ class MainActivity : FlutterActivity() {
                 putExtra(EXTRA_BACKGROUND, background)
                 
                 // 設定 session 行為：0 = 不做任何事, 1 = 聚焦, 2 = 新分頁
-                putExtra(EXTRA_SESSION_ACTION, if (background) "0" else "1")
+                putExtra(EXTRA_SESSION_ACTION, if (background) 0 else 1)
             }
             
             // 啟動服務

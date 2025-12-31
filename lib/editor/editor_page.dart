@@ -22,6 +22,7 @@ import '../git/git_clone_dialog.dart';
 import '../core/providers.dart';
 import '../run/flutter_runner_widget.dart';
 import '../run/flutter_runner_service.dart';
+import 'flutter_create_dialog.dart';
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -98,6 +99,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         action: () {
           ref.read(saveTriggerProvider.notifier).trigger();
         },
+      ),
+    );
+
+    registry.register(
+      Command(
+        id: 'flutter.create',
+        title: 'New Flutter Project',
+        category: 'Flutter',
+        icon: Icons.add_circle_outline,
+        action: _createNewProject,
       ),
     );
   }
@@ -403,6 +414,15 @@ class _EditorPageState extends ConsumerState<EditorPage> {
               showGitCloneDialog(context, ref);
             },
           ),
+          ListTile(
+            leading:
+                const Icon(Icons.add_circle_outline, color: Color(0xFF89B4FA)),
+            title: const Text('New Flutter Project'),
+            onTap: () {
+              Navigator.pop(context);
+              _createNewProject();
+            },
+          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.play_arrow),
@@ -662,6 +682,18 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           ),
           backgroundColor: result.success ? Colors.green : Colors.red,
         ),
+      );
+    }
+  }
+
+  void _createNewProject() async {
+    final currentDir = ref.read(currentDirectoryProvider);
+    final result = await showFlutterCreateDialog(context, currentDir);
+    if (result == true && mounted) {
+      // Refresh the file tree for the new project folder
+      // The dialog already updates projectPathProvider
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在準備專案環境...')),
       );
     }
   }

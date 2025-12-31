@@ -139,13 +139,31 @@ class TermuxBridge {
     // Optimized: Export PATH ensuring access to binaries even on cold start.
     // NOTE: Do NOT use 'sh -c' here, executeCommand already wraps with sh -c.
     const cmd =
-        'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; termux-wake-lock; sshd || (pkg update -y && pkg install openssh -y && sshd)';
-    return executeCommand(cmd, background: true);
+        'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; termux-wake-lock; sshd || (pkg update -y && pkg install openssh -y && ssh-keygen -A && sshd)';
+    return executeCommand(cmd, background: false);
   }
 
   /// 執行 termux-setup-storage
   Future<TermuxResult> setupStorage() {
     return executeCommand('termux-setup-storage', background: true);
+  }
+
+  /// 安裝 Flutter (使用 termux-flutter-wsl 腳本)
+  ///
+  /// 這個方法透過 Intent 直接在 Termux 中執行安裝腳本，
+  /// 不需要 SSH 連線就能安裝 Flutter。
+  Future<TermuxResult> installFlutter() {
+    const installScript =
+        'https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/main/install_termux_flutter.sh';
+    const cmd =
+        'termux-wake-lock; curl -sL $installScript | bash; termux-wake-unlock';
+    return executeCommand(cmd, background: false);
+  }
+
+  /// 檢查 Flutter 是否已安裝
+  Future<bool> isFlutterInstalled() async {
+    final result = await executeCommand('which flutter');
+    return result.success && result.stdout.trim().isNotEmpty;
   }
 
   /// 發送指令到 Termux 並取得串流輸出

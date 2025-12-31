@@ -15,7 +15,10 @@ class FileOperations {
         throw Exception("Failed to connect to Termux: $e");
       }
     }
-    return await _ssh.execute(cmd);
+    // Use absolute path for flutter to bypass environment issues in non-interactive SSH
+    const flutterPath = '/data/data/com.termux/files/home/flutter/bin';
+    final cmdWithEnv = 'export PATH=\$PATH:$flutterPath && $cmd';
+    return await _ssh.execute(cmdWithEnv);
   }
 
   /// Check if path exists
@@ -95,6 +98,7 @@ class FileOperations {
     try {
       // Use -la to show hidden files. Use -F to show file types (e.g., / for dirs, @ for links)
       final stdout = await _exec('ls -la "$path"');
+      print('FileOperations: ls -la "$path" result:\n$stdout');
       final lines = stdout.split('\n');
       final items = <FileItem>[];
 
@@ -163,6 +167,44 @@ class FileOperations {
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Create a new Flutter project
+  Future<bool> createFlutterProject(String parentDir, String name,
+      {String? org}) async {
+    final result =
+        await createFlutterProjectWithError(parentDir, name, org: org);
+    return result.success;
+  }
+
+  /// Create a new Flutter project with detailed error information
+  Future<({bool success, String? error})> createFlutterProjectWithError(
+      String parentDir, String name,
+      {String? org}) async {
+    try {
+      final orgArg = org != null && org.isNotEmpty ? '--org "$org"' : '';
+      final cmd = 'cd "$parentDir" && flutter create $orgArg "$name"';
+      print('FileOperations: Executing $cmd');
+      final result = await _exec(cmd);
+      print('FileOperations: Create result: $result');
+
+      // Check if output indicates success (Flutter create outputs "All done!")
+      if (result.contains('All done!') || result.contains('wrote')) {
+        return (success: true, error: null);
+      }
+
+      // Check for common errors
+      if (result.toLowerCase().contains('command not found') ||
+          result.toLowerCase().contains('no such file')) {
+        return (success: false, error: result);
+      }
+
+      // Assume success if no obvious error
+      return (success: true, error: null);
+    } catch (e) {
+      print('Create Flutter project failed: $e');
+      return (success: false, error: e.toString());
     }
   }
 }

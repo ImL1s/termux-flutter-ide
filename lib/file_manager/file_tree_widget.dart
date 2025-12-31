@@ -200,29 +200,38 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildItemRow(
-          item: item,
-          isExpanded: isExpanded,
-          onTap: () => _toggleFolder(item.path),
-          onLongPress: () => _showContextMenu(item),
-          indent: indent,
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isExpanded
-                    ? Icons.keyboard_arrow_down
-                    : Icons.keyboard_arrow_right,
-                size: 16,
-                color: Colors.grey,
+        DragTarget<FileItem>(
+          onWillAccept: (data) => _canMove(data, item),
+          onAccept: (data) => _moveFile(data, item),
+          builder: (context, candidates, rejects) {
+            final isHovered = candidates.isNotEmpty;
+            return Container(
+              color: isHovered ? AppTheme.primary.withOpacity(0.2) : null,
+              child: _buildItemRow(
+                item: item,
+                isExpanded: isExpanded,
+                onTap: () => _toggleFolder(item.path),
+                indent: indent,
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_down
+                          : Icons.keyboard_arrow_right,
+                      size: 16,
+                      color: Colors.grey,
+                    ),
+                    Icon(
+                      isExpanded ? Icons.folder_open : Icons.folder,
+                      size: 16,
+                      color: AppTheme.syntaxType,
+                    ),
+                  ],
+                ),
               ),
-              Icon(
-                isExpanded ? Icons.folder_open : Icons.folder,
-                size: 16,
-                color: AppTheme.syntaxType, // Themed Folder Icon
-              ),
-            ],
-          ),
+            );
+          },
         ),
         if (isExpanded)
           Column(
@@ -242,7 +251,6 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     return _buildItemRow(
       item: item,
       onTap: () => _openFile(item),
-      onLongPress: () => _showContextMenu(item),
       indent: indent,
       leading: Padding(
         padding: const EdgeInsets.only(left: 16),
@@ -258,16 +266,14 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
   Widget _buildItemRow({
     required FileItem item,
     required VoidCallback onTap,
-    required VoidCallback onLongPress,
     required Widget leading,
     required double indent,
     bool isExpanded = false,
   }) {
-    return InkWell(
+    final content = InkWell(
       onTap: onTap,
-      onLongPress: onLongPress,
       child: Padding(
-        padding: EdgeInsets.only(left: indent + 8, right: 8, top: 2, bottom: 2),
+        padding: EdgeInsets.only(left: indent + 8, right: 0, top: 2, bottom: 2),
         child: Row(
           children: [
             leading,
@@ -279,10 +285,95 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            // Context Menu Button
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
+                onPressed: () => _showContextMenu(item),
+              ),
+            ),
           ],
         ),
       ),
     );
+
+    return Dismissible(
+      key: Key(item.path),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (direction) => _confirmDelete(item),
+      child: LongPressDraggable<FileItem>(
+        data: item,
+        feedback: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.background.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: AppTheme.surfaceVariant),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.insert_drive_file,
+                    size: 16, color: Colors.white),
+                const SizedBox(width: 8),
+                Text(item.name, style: const TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.5, child: content),
+        child: content,
+      ),
+    );
+  }
+
+  bool _canMove(FileItem? src, FileItem dest) {
+    if (src == null) return false;
+    if (src.path == dest.path) return false; // Self
+    if (!dest.isDirectory) return false; // Dest must be dir
+
+    final srcDir = src.path.substring(0, src.path.lastIndexOf('/'));
+    if (srcDir == dest.path) return false; // Already in dest
+
+    if (dest.path.startsWith(src.path))
+      return false; // Can't move parent to child
+
+    return true;
+  }
+
+  Future<void> _moveFile(FileItem src, FileItem dest) async {
+    final ops = ref.read(fileOperationsProvider);
+    final newPath = '${dest.path}/${src.name}';
+    final success = await ops.rename(src.path, newPath);
+
+    if (success) {
+      final srcDir = src.path.substring(0, src.path.lastIndexOf('/'));
+      // Refresh both source parent and destination
+      _cachedContents.remove(srcDir);
+      _cachedContents.remove(dest.path);
+      // If we moved a directory that was expanded, update expanded set
+      if (src.isDirectory && _expandedDirs.contains(src.path)) {
+        _expandedDirs.remove(src.path);
+      }
+      if (mounted) {
+        // Use Future.wait to load both
+        await Future.wait([
+          _loadDirectory(srcDir),
+          _loadDirectory(dest.path),
+        ]);
+      }
+    }
   }
 
   void _toggleFolder(String path) {
@@ -461,15 +552,15 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     );
   }
 
-  void _confirmDelete(FileItem item) {
-    showDialog(
+  Future<bool> _confirmDelete(FileItem item) async {
+    final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete'),
         content: Text('Are you sure you want to delete "${item.name}"?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           TextButton(
@@ -490,11 +581,14 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
                   item.path.lastIndexOf('/'),
                 );
                 _cachedContents.remove(parentPath);
-                _loadDirectory(parentPath);
+                if (mounted) {
+                  _loadDirectory(parentPath);
+                }
               }
 
-              if (!mounted) return;
-              navigator.pop();
+              if (mounted && navigator.canPop()) {
+                navigator.pop(success);
+              }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
@@ -502,6 +596,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
         ],
       ),
     );
+    return result ?? false;
   }
 
   void _openFile(FileItem item) {
