@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:termux_flutter_ide/theme/app_theme.dart';
 import 'package:termux_flutter_ide/editor/editor_page.dart';
 import 'package:termux_flutter_ide/settings/settings_page.dart';
+import 'package:termux_flutter_ide/termux/ssh_service.dart';
 
 void main() {
   runApp(const ProviderScope(child: TermuxFlutterIDE()));
@@ -23,8 +24,22 @@ final _router = GoRouter(
   ],
 );
 
-class TermuxFlutterIDE extends StatelessWidget {
+class TermuxFlutterIDE extends ConsumerStatefulWidget {
   const TermuxFlutterIDE({super.key});
+
+  @override
+  ConsumerState<TermuxFlutterIDE> createState() => _TermuxFlutterIDEState();
+}
+
+class _TermuxFlutterIDEState extends ConsumerState<TermuxFlutterIDE> {
+  @override
+  void initState() {
+    super.initState();
+    // Start SSH connection globally on app launch
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(sshServiceProvider).connect();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

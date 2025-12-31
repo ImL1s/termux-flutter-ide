@@ -136,8 +136,10 @@ class TermuxBridge {
     // sh -c "termux-wake-lock && pkg update -y && pkg install openssh -y && echo -e 'termux\ntermux' | passwd && sshd"
 
     // Dart String:
+    // Optimized: Export PATH ensuring access to binaries even on cold start.
+    // NOTE: Do NOT use 'sh -c' here, executeCommand already wraps with sh -c.
     const cmd =
-        'sh -c "pkg update -y && pkg install openssh -y && echo -e \'termux\\ntermux\' | passwd && sshd && echo \'Done\'"';
+        'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; sshd || (pkg install openssh -y && sshd)';
 
     return executeCommand(cmd, background: true);
   }

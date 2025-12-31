@@ -1,92 +1,129 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../termux/termux_bridge.dart';
-import '../termux/termux_providers.dart';
+import '../termux/ssh_service.dart';
 
 /// File Operations Service
 class FileOperations {
-  final TermuxBridge _bridge;
+  final SSHService _ssh;
 
-  FileOperations(this._bridge);
+  FileOperations(this._ssh);
+
+  Future<String> _exec(String cmd) async {
+    if (!_ssh.isConnected) {
+      try {
+        await _ssh.connect();
+      } catch (e) {
+        throw Exception("Failed to connect to Termux: $e");
+      }
+    }
+    return await _ssh.execute(cmd);
+  }
 
   /// Create a new file
   Future<bool> createFile(String path) async {
-    final result = await _bridge.executeCommand('touch "$path"');
-    return result.success;
+    try {
+      await _exec('touch "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// Create a new directory
   Future<bool> createDirectory(String path) async {
-    final result = await _bridge.executeCommand('mkdir -p "$path"');
-    return result.success;
+    try {
+      await _exec('mkdir -p "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// Rename/move a file or directory
   Future<bool> rename(String oldPath, String newPath) async {
-    final result = await _bridge.executeCommand('mv "$oldPath" "$newPath"');
-    return result.success;
+    try {
+      await _exec('mv "$oldPath" "$newPath"');
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// Delete a file
   Future<bool> deleteFile(String path) async {
-    final result = await _bridge.executeCommand('rm "$path"');
-    return result.success;
+    try {
+      await _exec('rm "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// Delete a directory (recursive)
   Future<bool> deleteDirectory(String path) async {
-    final result = await _bridge.executeCommand('rm -rf "$path"');
-    return result.success;
+    try {
+      await _exec('rm -rf "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// List directory contents
   Future<List<FileItem>> listDirectory(String path) async {
-    final result = await _bridge.executeCommand('ls -la "$path"');
-    if (!result.success) return [];
+    try {
+      final stdout = await _exec('ls -la "$path"');
+      final lines = stdout.split('\n');
+      final items = <FileItem>[];
 
-    final lines = result.stdout.split('\n');
-    final items = <FileItem>[];
+      for (final line in lines) {
+        if (line.isEmpty || line.startsWith('total')) continue;
 
-    for (final line in lines) {
-      if (line.isEmpty || line.startsWith('total')) continue;
-      
-      final parts = line.split(RegExp(r'\s+'));
-      if (parts.length < 9) continue;
+        final parts = line.split(RegExp(r'\s+'));
+        if (parts.length < 9) continue;
 
-      final permissions = parts[0];
-      final name = parts.sublist(8).join(' ');
-      
-      if (name == '.' || name == '..') continue;
+        final permissions = parts[0];
+        final name = parts.sublist(8).join(' ');
 
-      items.add(FileItem(
-        name: name,
-        path: '$path/$name',
-        isDirectory: permissions.startsWith('d'),
-      ));
+        if (name == '.' || name == '..') continue;
+
+        items.add(FileItem(
+          name: name,
+          path: '$path/$name',
+          isDirectory: permissions.startsWith('d'),
+        ));
+      }
+      return items;
+    } catch (e) {
+      print('List directory failed: $e');
+      return [];
     }
-
-    return items;
   }
 
   /// Read file content
   Future<String?> readFile(String path) async {
-    final result = await _bridge.executeCommand('cat "$path"');
-    if (result.success) {
-      return result.stdout;
+    try {
+      return await _exec('cat "$path"');
+    } catch (e) {
+      print('Read file failed: $e');
+      return null;
     }
-    return null;
   }
 
   /// Write file content
   Future<bool> writeFile(String path, String content) async {
-    // Escape special characters for shell
-    final escaped = content
-        .replaceAll('\\', '\\\\')
-        .replaceAll('"', '\\"')
-        .replaceAll('\$', '\\\$')
-        .replaceAll('`', '\\`');
-    
-    final result = await _bridge.executeCommand('echo "$escaped" > "$path"');
-    return result.success;
+    try {
+      // Escape special characters for shell
+      final escaped = content
+          .replaceAll('\\', '\\\\')
+          .replaceAll('"', '\\"')
+          .replaceAll('\$', '\\\$')
+          .replaceAll('`', '\\`');
+
+      await _exec('echo "$escaped" > "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }
 
@@ -105,26 +142,27 @@ class FileItem {
 
 /// File Operations Provider
 final fileOperationsProvider = Provider<FileOperations>((ref) {
-  final bridge = ref.watch(termuxBridgeProvider);
-  return FileOperations(bridge);
+  final ssh = ref.watch(sshServiceProvider);
+  return FileOperations(ssh);
 });
 
 /// Current Directory Notifier
 class CurrentDirectoryNotifier extends Notifier<String> {
   @override
   String build() => '/storage/emulated/0';
-  
+
   void setPath(String path) => state = path;
 }
 
 /// Current Directory Provider
-final currentDirectoryProvider = NotifierProvider<CurrentDirectoryNotifier, String>(
+final currentDirectoryProvider =
+    NotifierProvider<CurrentDirectoryNotifier, String>(
   CurrentDirectoryNotifier.new,
 );
 
 /// Directory Contents Provider
-final directoryContentsProvider = FutureProvider.family<List<FileItem>, String>((ref, path) async {
+final directoryContentsProvider =
+    FutureProvider.family<List<FileItem>, String>((ref, path) async {
   final ops = ref.watch(fileOperationsProvider);
   return ops.listDirectory(path);
 });
-

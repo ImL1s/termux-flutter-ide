@@ -33,7 +33,7 @@ class MainActivity : FlutterActivity() {
                 "getTermuxUid" -> {
                     result.success(getTermuxUid())
                 }
-                "executeTermuxCommand" -> {
+                "executeCommand" -> {
                     val command = call.argument<String>("command")
                     val workingDirectory = call.argument<String>("workingDirectory")
                     val background = call.argument<Boolean>("background") ?: false
@@ -87,14 +87,10 @@ class MainActivity : FlutterActivity() {
                 setClassName(TERMUX_PACKAGE, TERMUX_RUN_COMMAND_SERVICE)
                 action = TERMUX_RUN_COMMAND_ACTION
                 
-                // 將指令拆分為可執行檔和參數
-                val parts = command.split(" ", limit = 2)
-                val executable = parts[0]
-                val args = if (parts.size > 1) parts[1].split(" ").toTypedArray() else emptyArray()
-                
-                // 設定執行路徑（使用 Termux 的 bin 目錄）
-                putExtra(EXTRA_COMMAND_PATH, "/data/data/com.termux/files/usr/bin/$executable")
-                putExtra(EXTRA_ARGUMENTS, args)
+                // 為了支援複雜指令（包含管道、重導向、引號等），我們透過 Termux 的 shell 執行
+                val termuxSh = "/data/data/com.termux/files/usr/bin/sh"
+                putExtra(EXTRA_COMMAND_PATH, termuxSh)
+                putExtra(EXTRA_ARGUMENTS, arrayOf("-c", command))
                 
                 // 設定工作目錄
                 workingDirectory?.let {
