@@ -18,6 +18,28 @@ class FileOperations {
     return await _ssh.execute(cmd);
   }
 
+  /// Check if path exists
+  Future<bool> exists(String path) async {
+    try {
+      final result =
+          await _exec('[ -e "$path" ] && echo "exists" || echo "not found"');
+      return result.trim() == "exists";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Check if path is directory
+  Future<bool> isDirectory(String path) async {
+    try {
+      final result =
+          await _exec('[ -d "$path" ] && echo "dir" || echo "not dir"');
+      return result.trim() == "dir";
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Create a new file
   Future<bool> createFile(String path) async {
     try {

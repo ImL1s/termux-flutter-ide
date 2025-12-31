@@ -8,6 +8,7 @@ import '../file_manager/file_tree_widget.dart';
 import '../file_manager/file_operations.dart';
 import '../terminal/terminal_widget.dart';
 import '../termux/termux_providers.dart';
+import '../termux/ssh_service.dart';
 import '../ai/ai_chat_widget.dart';
 import '../ai/ai_providers.dart';
 import '../search/search_widget.dart';
@@ -19,6 +20,8 @@ import 'editor_providers.dart';
 import '../settings/settings_page.dart';
 import '../git/git_clone_dialog.dart';
 import '../core/providers.dart';
+import '../run/flutter_runner_widget.dart';
+import '../run/flutter_runner_service.dart';
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -101,6 +104,14 @@ class _EditorPageState extends ConsumerState<EditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Hot Reload on Save Listener
+    ref.listen(saveTriggerProvider, (previous, next) {
+      if (previous != next) {
+        // Trigger Hot Reload if a session is active
+        ref.read(flutterRunnerServiceProvider).hotReload();
+      }
+    });
+
     final isMobile = MediaQuery.of(context).size.width < 600;
 
     return CallbackShortcuts(
@@ -134,7 +145,70 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       },
       child: Focus(
         autofocus: true,
-        child: isMobile ? _buildMobileScaffold() : _buildDesktopScaffold(),
+        child: Column(
+          children: [
+            // SSH Status Banner
+            Consumer(
+              builder: (context, ref, _) {
+                final status = ref.watch(sshStatusProvider).asData?.value ??
+                    SSHStatus.disconnected;
+                if (status == SSHStatus.failed) {
+                  return Container(
+                    color: Colors.red.shade900,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: Colors.white, size: 20),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Termux SSH Connection Failed. Please ensure Termux is installed and SSHD is running.',
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              ref.read(sshServiceProvider).connect(),
+                          child: const Text('RETRY',
+                              style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                if (status == SSHStatus.bootstrapping) {
+                  return Container(
+                    color: Colors.blue.shade900,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: const Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Bootstrapping Termux SSH Environment...',
+                          style: TextStyle(color: Colors.white, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+            Expanded(
+              child:
+                  isMobile ? _buildMobileScaffold() : _buildDesktopScaffold(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -349,8 +423,10 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                   .read(terminalCommandProvider.notifier)
                   .run('cd "$projectPath" && flutter run');
 
-              // Show Terminal
-              _showTerminalMobile();
+              // Show Terminal after a short delay to let drawer close
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (mounted) _showTerminalMobile();
+              });
             },
           ),
           const Divider(),
@@ -379,6 +455,10 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   }
 
   void _showTerminalMobile() {
+    // Close any existing modals (like the File Explorer or Drawer)
+    Navigator.of(context, rootNavigator: true)
+        .popUntil((route) => route.isFirst);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -547,18 +627,27 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     }
   }
 
-  void _runFlutter() async {
-    final bridge = ref.read(termuxBridgeProvider);
-    if (!_showTerminal) setState(() => _showTerminal = true);
-    final result = await bridge.flutterRun();
-    if (!result.success && mounted) {
+  void _runFlutter() {
+    final projectPath = ref.read(projectPathProvider);
+    if (projectPath == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${result.stderr}'),
-          backgroundColor: Colors.red,
+        const SnackBar(
+          content: Text('Please open a Flutter project first'),
+          backgroundColor: Colors.orange,
         ),
       );
+      return;
     }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E2E), // Match theme
+      isScrollControlled: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: const FlutterRunnerWidget(),
+      ),
+    );
   }
 
   void _buildApk() async {

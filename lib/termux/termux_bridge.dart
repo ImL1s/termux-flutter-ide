@@ -139,7 +139,7 @@ class TermuxBridge {
     // Optimized: Export PATH ensuring access to binaries even on cold start.
     // NOTE: Do NOT use 'sh -c' here, executeCommand already wraps with sh -c.
     const cmd =
-        'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; sshd || (pkg install openssh -y && sshd)';
+        'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; termux-wake-lock; sshd || (pkg update -y && pkg install openssh -y && sshd)';
     return executeCommand(cmd, background: true);
   }
 

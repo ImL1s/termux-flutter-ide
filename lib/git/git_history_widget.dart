@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'git_service.dart';
 import 'git_graph_logic.dart';
@@ -24,7 +25,6 @@ class GitHistoryWidget extends ConsumerWidget {
           itemBuilder: (context, index) {
             return _GitCommitRow(
               node: graphNodes[index],
-              // Pass context for successor info if needed for drawing lines to next row
               isLast: index == graphNodes.length - 1,
             );
           },
@@ -53,8 +53,10 @@ class _GitCommitRow extends StatelessWidget {
 
     return InkWell(
       onTap: () {
-        // TODO: Show commit details or diff
+        // TODO: Show commit details
       },
+      onLongPress: () => _showContextMenu(context, commit),
+      onSecondaryTap: () => _showContextMenu(context, commit),
       child: Container(
         height: 50,
         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -136,8 +138,63 @@ class _GitCommitRow extends StatelessWidget {
     );
   }
 
+  void _showContextMenu(BuildContext context, GitCommit commit) {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        overlay.localToGlobal(Offset.zero),
+        overlay.localToGlobal(overlay.size.bottomRight(Offset.zero)),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu(
+      context: context,
+      position: position,
+      items: [
+        const PopupMenuItem(
+          value: 'copy_hash',
+          child: Row(
+            children: [
+              Icon(Icons.copy, size: 16),
+              SizedBox(width: 8),
+              Text('Copy Hash'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'view_diff',
+          child: Row(
+            children: [
+              Icon(Icons.difference, size: 16),
+              SizedBox(width: 8),
+              Text('View Diff'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'checkout',
+          child: Row(
+            children: [
+              Icon(Icons.check_circle_outline, size: 16),
+              SizedBox(width: 8),
+              Text('Checkout'),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'copy_hash') {
+        Clipboard.setData(ClipboardData(text: commit.hash));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Copied hash: ${commit.shortHash}')),
+        );
+      }
+    });
+  }
+
   Widget _buildRefsBadge(String refs) {
-    // Refs format: (HEAD -> main, origin/main)
     final cleanRefs = refs.replaceAll('(', '').replaceAll(')', '');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -165,7 +222,7 @@ class GitGraphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const laneWidth = 12.0;
+    const laneWidth = 14.0;
     const dotRadius = 4.0;
     final centerY = size.height / 2;
 
@@ -174,7 +231,8 @@ class GitGraphPainter extends CustomPainter {
       final paint = Paint()
         ..color = GitGraphLayouter.getLaneColor(conn.fromLane)
         ..strokeWidth = 2.0
-        ..style = PaintingStyle.stroke;
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
 
       final startX = 10.0 + conn.fromLane * laneWidth;
       final endX = 10.0 + conn.toLane * laneWidth;
@@ -183,10 +241,19 @@ class GitGraphPainter extends CustomPainter {
         // Vertical line through this cell
         canvas.drawLine(Offset(startX, 0), Offset(startX, size.height), paint);
       } else if (conn.type == ConnectionType.split) {
-        // Line splitting off to a new lane below
+        // Curve from current node (centerY) to next row (height)
         final path = Path();
         path.moveTo(startX, centerY);
-        path.quadraticBezierTo(startX, size.height, endX, size.height);
+
+        // Cubic Bezier for smoother S-curve
+        path.cubicTo(
+            startX,
+            size.height, // Control Point 1
+            endX,
+            centerY, // Control Point 2
+            endX,
+            size.height // End Point
+            );
         canvas.drawPath(path, paint);
       }
     }

@@ -65,8 +65,9 @@ class SSHService {
         print('SSHService: Connected successfully after bootstrap');
       } catch (e2) {
         print('SSHService: Connection/Bootstrap failed: $e2');
-        _updateStatus(SSHStatus.disconnected);
-        rethrow;
+        _updateStatus(SSHStatus.failed);
+        // Do not rethrow here to prevent app crash at startup.
+        // The UI should handle the failed status.
       }
     }
   }
@@ -114,10 +115,16 @@ enum SSHStatus {
   connecting,
   bootstrapping,
   connected,
+  failed,
 }
 
 /// Provider
 final sshServiceProvider = Provider<SSHService>((ref) {
   final bridge = ref.watch(termuxBridgeProvider);
   return SSHService(bridge);
+});
+
+final sshStatusProvider = StreamProvider<SSHStatus>((ref) {
+  final service = ref.watch(sshServiceProvider);
+  return service.statusStream;
 });

@@ -5,6 +5,7 @@ import 'package:termux_flutter_ide/theme/app_theme.dart';
 import 'package:termux_flutter_ide/editor/editor_page.dart';
 import 'package:termux_flutter_ide/settings/settings_page.dart';
 import 'package:termux_flutter_ide/termux/ssh_service.dart';
+import 'package:termux_flutter_ide/core/snackbar_service.dart';
 
 void main() {
   runApp(const ProviderScope(child: TermuxFlutterIDE()));
@@ -43,11 +44,14 @@ class _TermuxFlutterIDEState extends ConsumerState<TermuxFlutterIDE> {
 
   @override
   Widget build(BuildContext context) {
+    final messengerKey = ref.watch(scaffoldMessengerKeyProvider);
+
     return MaterialApp.router(
       title: 'Termux Flutter IDE',
       theme: AppTheme.darkTheme,
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: messengerKey,
     );
   }
 }

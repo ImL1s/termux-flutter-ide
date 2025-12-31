@@ -4,12 +4,11 @@ import 'package:termux_flutter_ide/core/providers.dart';
 
 void main() {
   group('OpenFilesNotifier', () {
-    test('starts with default file', () {
+    test('starts with empty list', () {
       final container = ProviderContainer();
       final files = container.read(openFilesProvider);
 
-      expect(files, isNotEmpty);
-      expect(files.first, contains('main.dart'));
+      expect(files, isEmpty);
     });
 
     test('add adds new file', () {
@@ -39,11 +38,11 @@ void main() {
   });
 
   group('CurrentFileNotifier', () {
-    test('starts with first open file', () {
+    test('starts with null (no file selected)', () {
       final container = ProviderContainer();
       final current = container.read(currentFileProvider);
 
-      expect(current, isNotNull);
+      expect(current, isNull);
     });
 
     test('select changes current file', () {

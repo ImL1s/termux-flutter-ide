@@ -19,6 +19,7 @@ import '../settings/settings_providers.dart';
 import '../file_manager/file_operations.dart';
 import 'editor_providers.dart';
 import '../core/providers.dart';
+import '../core/snackbar_service.dart';
 import 'coding_toolbar.dart';
 import 'editor_request_provider.dart'; // Import Request Provider
 import 'completion/completion_service.dart';
@@ -328,7 +329,9 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
         ref.read(dirtyFilesProvider.notifier).isDirty(_currentFilePath!);
     if (!isDirty) return; // Nothing to save
 
+    final snackBar = ref.read(snackBarServiceProvider);
     ref.read(isSavingProvider.notifier).set(true);
+
     try {
       final content = _controller!.text;
       final ops = ref.read(fileOperationsProvider);
@@ -341,33 +344,13 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
             .set(_currentFilePath!, content);
         ref.read(dirtyFilesProvider.notifier).markClean(_currentFilePath!);
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('File saved'),
-              duration: Duration(milliseconds: 1000),
-            ),
-          );
-        }
+        // Use global SnackBar service
+        snackBar.success('已儲存: ${_currentFilePath!.split('/').last}');
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to save file'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        snackBar.error('儲存失敗');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      snackBar.error('儲存錯誤: $e');
     } finally {
       ref.read(isSavingProvider.notifier).set(false);
     }
