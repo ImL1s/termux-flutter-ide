@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
-import '../file_manager/file_operations.dart';
 import '../theme/app_theme.dart';
 import 'git_service.dart';
+import 'git_history_widget.dart';
 
 class GitWidget extends ConsumerStatefulWidget {
   const GitWidget({super.key});
@@ -44,57 +44,56 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
 
     final currentDir = projectPath;
 
-    return Container(
-      color: AppTheme.surface, // Themed
-      child: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                const Text(
-                  'SOURCE CONTROL',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary, // Themed
-                    letterSpacing: 1,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.refresh, size: 16),
-                  onPressed: () => ref.invalidate(gitStatusProvider),
-                  tooltip: 'Refresh Status',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 24,
-                    minHeight: 24,
-                  ),
-                  color: AppTheme.textDisabled,
-                ),
+    return DefaultTabController(
+      length: 2,
+      child: Container(
+        color: AppTheme.surface,
+        child: Column(
+          children: [
+            // Tabs
+            const TabBar(
+              tabs: [
+                Tab(text: 'CHANGES'),
+                Tab(text: 'HISTORY'),
               ],
+              labelStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              indicatorColor: AppTheme.secondary,
+              labelColor: AppTheme.secondary,
+              unselectedLabelColor: AppTheme.textDisabled,
             ),
-          ),
-          const Divider(height: 1),
-          // Content
-          Expanded(
-            child: statusAsync.when(
-              data: (changes) {
-                if (changes.isEmpty) {
-                  return _buildEmptyState(currentDir);
-                }
-                return _buildChangesList(context, changes, currentDir);
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, stack) => Center(child: Text('Error: $e')),
+            const Divider(height: 1),
+            // Content
+            Expanded(
+              child: TabBarView(
+                children: [
+                  // Changes Tab
+                  Column(
+                    children: [
+                      Expanded(
+                        child: statusAsync.when(
+                          data: (changes) {
+                            if (changes.isEmpty) {
+                              return _buildEmptyState(currentDir);
+                            }
+                            return _buildChangesList(
+                                context, changes, currentDir);
+                          },
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
+                          error: (e, stack) => Center(child: Text('Error: $e')),
+                        ),
+                      ),
+                      if (statusAsync.hasValue && statusAsync.value!.isNotEmpty)
+                        _buildCommitBox(currentDir),
+                    ],
+                  ),
+                  // History Tab
+                  const GitHistoryWidget(),
+                ],
+              ),
             ),
-          ),
-          // Commit Box
-          if (statusAsync.hasValue && statusAsync.value!.isNotEmpty)
-            _buildCommitBox(currentDir),
-        ],
+          ],
+        ),
       ),
     );
   }
