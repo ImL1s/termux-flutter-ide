@@ -21,6 +21,7 @@ import 'editor_providers.dart';
 import '../core/providers.dart';
 import 'coding_toolbar.dart';
 import 'editor_request_provider.dart'; // Import Request Provider
+import 'completion/completion_service.dart';
 
 class CodeEditorWidget extends ConsumerStatefulWidget {
   const CodeEditorWidget({super.key});
@@ -199,6 +200,7 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
   }
 
   Future<void> _loadFileContent(String path) async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -209,25 +211,36 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
       final content = await ops.readFile(path);
 
       if (content != null) {
-        _controller?.dispose();
-        _controller = CodeController(
-          text: content,
-          language: _getLanguageForFile(path),
-        );
+        if (!mounted) return;
+        setState(() {
+          _controller?.dispose();
+          _controller = CodeController(
+            text: content,
+            language: _getLanguageForFile(path),
+          );
+          _isLoading = false;
+        });
+
+        // Initialize completion with file keywords
+        ref.read(completionProvider.notifier).updateFileContent(content);
 
         // Listen for changes to update dirty state
         _controller!.addListener(_onCodeChanged);
 
-        // Cache original content for dirty checking
+        // Cache original content to track unsaved changes
         ref.read(originalContentProvider.notifier).set(path, content);
       } else {
-        _error = 'Could not read file';
+        if (mounted) {
+          setState(() {
+            _error = 'Could not read file';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
-      _error = e.toString();
-    } finally {
       if (mounted) {
         setState(() {
+          _error = e.toString();
           _isLoading = false;
         });
       }
@@ -237,6 +250,7 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
   void _onCodeChanged() {
     if (_currentFilePath == null || _controller == null) return;
 
+    // 1. Dirty check
     final currentContent = _controller!.text;
     final originalContent = ref.read(
       originalContentProvider,
@@ -248,13 +262,61 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
       ref.read(dirtyFilesProvider.notifier).markClean(_currentFilePath!);
     }
 
-    // Debounce auto-save
+    // 2. Auto-completion trigger
+    _updateCompletion();
+
+    // 3. Debounce auto-save
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) {
         saveFile();
       }
     });
+  }
+
+  void _updateCompletion() {
+    final selection = _controller!.selection;
+    if (!selection.isValid || !selection.isCollapsed) {
+      ref.read(completionProvider.notifier).clear();
+      return;
+    }
+
+    final text = _controller!.text;
+    final cursor = selection.baseOffset;
+    if (cursor == 0) return;
+
+    // Get current line
+    // Find last newline before cursor
+    int lineStart = text.lastIndexOf('\n', cursor - 1);
+    lineStart = lineStart == -1 ? 0 : lineStart + 1;
+
+    // Find next newline after cursor
+    int lineEnd = text.indexOf('\n', cursor);
+    lineEnd = lineEnd == -1 ? text.length : lineEnd;
+
+    final fullLine = text.substring(lineStart, lineEnd);
+
+    // Get word before cursor
+    int wordStart = cursor - 1;
+    while (wordStart >= 0) {
+      final char = text[wordStart];
+      // Allow letters, numbers, underscores
+      if (!RegExp(r'[a-zA-Z0-9_]').hasMatch(char)) {
+        break;
+      }
+      wordStart--;
+    }
+    wordStart++; // Move back to first char
+
+    final currentWord = text.substring(wordStart, cursor);
+
+    if (currentWord.isNotEmpty) {
+      ref
+          .read(completionProvider.notifier)
+          .updateSuggestions(currentWord, fullLine);
+    } else {
+      ref.read(completionProvider.notifier).clear();
+    }
   }
 
   /// Save the current file content

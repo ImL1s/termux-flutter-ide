@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../termux/termux_bridge.dart';
 import '../termux/termux_providers.dart';
 import '../file_manager/file_operations.dart';
+import '../core/providers.dart';
 
 /// Git Service
 class GitService {
@@ -29,7 +30,7 @@ class GitService {
     );
     return result.success;
   }
-  
+
   Future<bool> unstageFile(String path, String file) async {
     final result = await _bridge.executeCommand(
       'cd "$path" && git restore --staged "$file"',
@@ -51,13 +52,32 @@ class GitService {
     );
     return result.success ? result.stdout : '';
   }
-  
+
   // Initialize new repo
   Future<bool> init(String path) async {
     final result = await _bridge.executeCommand(
       'cd "$path" && git init',
     );
     return result.success;
+  }
+
+  /// Clone a repository from URL
+  Future<String?> clone(String url, String targetDir) async {
+    // Extract repo name from URL (e.g., user/repo.git -> repo)
+    String repoName = url.split('/').last;
+    if (repoName.endsWith('.git')) {
+      repoName = repoName.substring(0, repoName.length - 4);
+    }
+
+    final clonePath = '$targetDir/$repoName';
+    final result = await _bridge.executeCommand(
+      'cd "$targetDir" && git clone "$url"',
+    );
+
+    if (result.success) {
+      return clonePath;
+    }
+    return null;
   }
 }
 
@@ -68,35 +88,38 @@ final gitServiceProvider = Provider<GitService>((ref) {
 });
 
 /// Git Status Provider
-final gitStatusProvider = FutureProvider.autoDispose<List<GitFileChange>>((ref) async {
-  final path = ref.watch(currentDirectoryProvider);
+final gitStatusProvider =
+    FutureProvider.autoDispose<List<GitFileChange>>((ref) async {
+  final path = ref.watch(projectPathProvider);
+  if (path == null) return [];
+
   final service = ref.watch(gitServiceProvider);
-  
+
   if (!await service.isGitRepository(path)) {
     return [];
   }
 
   final statusOutput = await service.getStatus(path);
   final changes = <GitFileChange>[];
-  
+
   for (final line in statusOutput.split('\n')) {
     if (line.trim().isEmpty) continue;
-    
+
     // Parse porcelain format: XY Path
     // X = staged status, Y = unstaged status
     if (line.length < 4) continue;
-    
+
     final x = line[0];
     final y = line[1];
     final filePath = line.substring(3).trim();
-    
+
     changes.add(GitFileChange(
       path: filePath,
       stagedStatus: x,
       unstagedStatus: y,
     ));
   }
-  
+
   return changes;
 });
 
@@ -110,7 +133,7 @@ class GitFileChange {
     required this.stagedStatus,
     required this.unstagedStatus,
   });
-  
+
   bool get isStaged => stagedStatus != ' ' && stagedStatus != '?';
   bool get isModified => unstagedStatus != ' ';
   bool get isUntracked => stagedStatus == '?' && unstagedStatus == '?';

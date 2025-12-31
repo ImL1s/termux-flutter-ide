@@ -7,7 +7,7 @@ final openFilesProvider = NotifierProvider<OpenFilesNotifier, List<String>>(
 
 class OpenFilesNotifier extends Notifier<List<String>> {
   @override
-  List<String> build() => ['/lib/main.dart'];
+  List<String> build() => [];
 
   void add(String path) {
     if (!state.contains(path)) {
@@ -52,7 +52,8 @@ class ProjectPathNotifier extends Notifier<String?> {
 }
 
 /// Terminal output
-final terminalOutputProvider = NotifierProvider<TerminalOutputNotifier, List<String>>(
+final terminalOutputProvider =
+    NotifierProvider<TerminalOutputNotifier, List<String>>(
   TerminalOutputNotifier.new,
 );
 
@@ -80,5 +81,24 @@ class TerminalRunningNotifier extends Notifier<bool> {
 
   void setRunning(bool running) {
     state = running;
+  }
+}
+
+/// Terminal Command Injection
+final terminalCommandProvider =
+    NotifierProvider<TerminalCommandNotifier, String?>(
+  TerminalCommandNotifier.new,
+);
+
+class TerminalCommandNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void run(String cmd) {
+    state = cmd;
+  }
+
+  void clear() {
+    state = null;
   }
 }

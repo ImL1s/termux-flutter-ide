@@ -5,6 +5,7 @@ import 'package:flutter_resizable_container/flutter_resizable_container.dart';
 import 'code_editor_widget.dart';
 import 'file_tabs_widget.dart';
 import '../file_manager/file_tree_widget.dart';
+import '../file_manager/file_operations.dart';
 import '../terminal/terminal_widget.dart';
 import '../termux/termux_providers.dart';
 import '../ai/ai_chat_widget.dart';
@@ -16,6 +17,8 @@ import 'package:flutter/services.dart'; // For LogicalKeyboardKey
 import '../git/git_widget.dart';
 import 'editor_providers.dart';
 import '../settings/settings_page.dart';
+import '../git/git_clone_dialog.dart';
+import '../core/providers.dart';
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -165,7 +168,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   Widget _buildMobileScaffold() {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Termux IDE', style: TextStyle(fontSize: 18)),
+        title: Consumer(
+          builder: (context, ref, _) {
+            final projectPath = ref.watch(projectPathProvider);
+            final projectName = projectPath?.split('/').last ?? 'IDE';
+            return Text(
+              projectPath != null ? '$projectName - Termux IDE' : 'Termux IDE',
+              style: const TextStyle(fontSize: 16),
+            );
+          },
+        ),
         leading: Builder(
           builder: (context) => IconButton(
             icon: const Icon(Icons.menu),
@@ -269,10 +281,76 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                 backgroundColor: const Color(0xFF1E1E2E),
                 isScrollControlled: true,
                 builder: (context) => SizedBox(
-                  height: MediaQuery.of(context).size.height * 0.7,
+                  height: MediaQuery.of(context).size.height * 0.9, // Taller
                   child: const GitWidget(),
                 ),
               );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.folder_open),
+            title: const Text('Open Folder'),
+            onTap: () {
+              Navigator.pop(context);
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: const Color(0xFF1E1E2E), // Match theme
+                builder: (context) => SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.8,
+                  child: DirectoryBrowser(
+                    initialPath: ref.read(currentDirectoryProvider),
+                    onSelect: (path) {
+                      ref.read(currentDirectoryProvider.notifier).setPath(path);
+                      ref.read(projectPathProvider.notifier).set(path);
+                      Navigator.pop(context);
+
+                      // Automatically open Explorer after folder selection
+                      showModalBottomSheet(
+                        context: context,
+                        backgroundColor: const Color(0xFF1E1E2E),
+                        isScrollControlled: true,
+                        builder: (context) => SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.7,
+                          child: const FileTreeWidget(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.download),
+            title: const Text('Clone from GitHub'),
+            onTap: () {
+              Navigator.pop(context);
+              showGitCloneDialog(context, ref);
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.play_arrow),
+            title: const Text('Run Project'),
+            onTap: () {
+              Navigator.pop(context);
+
+              final projectPath = ref.read(projectPathProvider);
+              if (projectPath == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No project open')),
+                );
+                return;
+              }
+
+              // Run flutter run in terminal
+              ref
+                  .read(terminalCommandProvider.notifier)
+                  .run('cd "$projectPath" && flutter run');
+
+              // Show Terminal
+              _showTerminalMobile();
             },
           ),
           const Divider(),
@@ -306,30 +384,35 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1E1E2E),
       builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: Column(
-          children: [
-            Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  const Icon(Icons.terminal, size: 18, color: Colors.grey),
-                  const SizedBox(width: 8),
-                  const Text('TERMINAL',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.keyboard_arrow_down),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
+        height: MediaQuery.of(context).size.height * 0.9, // 90% Height
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom, // Keyboard
+          ),
+          child: Column(
+            children: [
+              Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.terminal, size: 18, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    const Text('TERMINAL',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.keyboard_arrow_down),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1),
-            const Expanded(child: TerminalWidget()),
-          ],
-        ),
+              const Divider(height: 1),
+              const Expanded(child: TerminalWidget()),
+            ],
+          ),
+        ), // Close Padding
       ),
     );
   }

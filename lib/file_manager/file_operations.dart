@@ -71,6 +71,7 @@ class FileOperations {
   /// List directory contents
   Future<List<FileItem>> listDirectory(String path) async {
     try {
+      // Use -la to show hidden files. Use -F to show file types (e.g., / for dirs, @ for links)
       final stdout = await _exec('ls -la "$path"');
       final lines = stdout.split('\n');
       final items = <FileItem>[];
@@ -78,24 +79,41 @@ class FileOperations {
       for (final line in lines) {
         if (line.isEmpty || line.startsWith('total')) continue;
 
+        // Skip . and ..
         final parts = line.split(RegExp(r'\s+'));
         if (parts.length < 9) continue;
 
         final permissions = parts[0];
-        final name = parts.sublist(8).join(' ');
+        // Name is usually the 9th part onwards
+        String name = parts.sublist(8).join(' ');
 
         if (name == '.' || name == '..') continue;
+
+        bool isDirectory = permissions.startsWith('d');
+
+        // Handle symlinks
+        if (permissions.startsWith('l')) {
+          // Name format for links: "linkname -> target"
+          final linkParts = name.split(' -> ');
+          if (linkParts.isNotEmpty) {
+            name = linkParts[0];
+            // We assume links might be directories to allow navigation (e.g., /sdcard)
+            // A more robust way would be `[ -d "$path/$name" ]` but that's an extra command.
+            // For now, let's treat all symlinks as navigable in the browser.
+            isDirectory = true;
+          }
+        }
 
         items.add(FileItem(
           name: name,
           path: '$path/$name',
-          isDirectory: permissions.startsWith('d'),
+          isDirectory: isDirectory,
         ));
       }
       return items;
     } catch (e) {
       print('List directory failed: $e');
-      return [];
+      rethrow; // Rethrow to allow UI to handle error
     }
   }
 
@@ -149,7 +167,7 @@ final fileOperationsProvider = Provider<FileOperations>((ref) {
 /// Current Directory Notifier
 class CurrentDirectoryNotifier extends Notifier<String> {
   @override
-  String build() => '/storage/emulated/0';
+  String build() => '/data/data/com.termux/files/home';
 
   void setPath(String path) => state = path;
 }

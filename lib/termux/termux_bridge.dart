@@ -140,8 +140,12 @@ class TermuxBridge {
     // NOTE: Do NOT use 'sh -c' here, executeCommand already wraps with sh -c.
     const cmd =
         'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; sshd || (pkg install openssh -y && sshd)';
-
     return executeCommand(cmd, background: true);
+  }
+
+  /// 執行 termux-setup-storage
+  Future<TermuxResult> setupStorage() {
+    return executeCommand('termux-setup-storage', background: true);
   }
 
   /// 發送指令到 Termux 並取得串流輸出

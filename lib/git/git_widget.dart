@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/providers.dart';
 import '../file_manager/file_operations.dart';
 import '../theme/app_theme.dart';
 import 'git_service.dart';
@@ -18,7 +19,30 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
   @override
   Widget build(BuildContext context) {
     final statusAsync = ref.watch(gitStatusProvider);
-    final currentDir = ref.watch(currentDirectoryProvider);
+    final projectPath = ref.watch(projectPathProvider);
+
+    if (projectPath == null) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.folder_off, size: 48, color: AppTheme.textDisabled),
+            SizedBox(height: 16),
+            Text(
+              'No Project Selected',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Open a project to see Git status',
+              style: TextStyle(color: AppTheme.textDisabled, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final currentDir = projectPath;
 
     return Container(
       color: AppTheme.surface, // Themed

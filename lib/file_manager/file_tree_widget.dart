@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
 import '../theme/app_theme.dart';
+import '../termux/termux_providers.dart';
 import 'file_operations.dart';
 
 class FileTreeWidget extends ConsumerStatefulWidget {
@@ -16,112 +17,183 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
   final Map<String, List<FileItem>> _cachedContents = {};
 
   @override
+  void initState() {
+    super.initState();
+    // Expand project root by default if available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final projectPath = ref.read(projectPathProvider);
+      if (projectPath != null) {
+        setState(() {
+          _expandedDirs.add(projectPath);
+        });
+        _loadDirectory(projectPath);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final currentDir = ref.watch(currentDirectoryProvider);
+    final projectPath = ref.watch(projectPathProvider);
 
     return Container(
-      color: AppTheme.surface, // Themed
+      color: AppTheme.surface,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          _buildHeader(currentDir),
+          _buildHeader(),
           const Divider(height: 1),
-          // File tree
-          Expanded(child: _buildFileTree(currentDir)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(String currentDir) {
-    final projectName = currentDir.split('/').last;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.folder_open,
-            size: 16,
-            color: AppTheme.secondary,
-          ), // Themed
-          const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              projectName.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary, // Themed
-                letterSpacing: 1,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.create_new_folder, size: 16),
-            onPressed: () => _showCreateDialog(currentDir, isDirectory: true),
-            tooltip: 'New Folder',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-          ),
-          IconButton(
-            icon: const Icon(Icons.note_add, size: 16),
-            onPressed: () => _showCreateDialog(currentDir, isDirectory: false),
-            tooltip: 'New File',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-          ),
-          IconButton(
-            icon: const Icon(Icons.folder_open, size: 16),
-            onPressed: _openProject,
-            tooltip: 'Open Project',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, size: 16),
-            onPressed: _refresh,
-            tooltip: 'Refresh',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+            child: projectPath == null
+                ? _buildNoProjectView()
+                : _buildFileTree(projectPath),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFileTree(String rootPath) {
-    final items = _cachedContents[rootPath];
-
-    if (items == null) {
-      _loadDirectory(rootPath);
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (items.isEmpty) {
-      return const Center(
-        child: Text(
-          'Empty folder',
-          style: TextStyle(color: AppTheme.textDisabled),
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: const Text(
+        'EXPLORER',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.textSecondary,
+          letterSpacing: 1.2,
         ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        if (item.isDirectory) {
-          return _buildFolderItem(item);
-        } else {
-          return _buildFileItem(item);
-        }
-      },
+      ),
     );
   }
 
-  Widget _buildFolderItem(FileItem item) {
+  Widget _buildNoProjectView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.folder_open, size: 48, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              'No folder opened',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _openProject,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.secondary,
+                foregroundColor: Colors.black,
+              ),
+              child: const Text('Open Folder'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFileTree(String projectPath) {
+    final projectName = projectPath.split('/').last;
+    final isExpanded = _expandedDirs.contains(projectPath);
+    final items = _cachedContents[projectPath];
+
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        // Root Project Folder Node
+        _buildRootNode(projectName, projectPath, isExpanded),
+
+        if (isExpanded) ...[
+          if (items == null)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8.0),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(left: 32, top: 8),
+              child: Text(
+                'No files',
+                style: TextStyle(fontSize: 12, color: AppTheme.textDisabled),
+              ),
+            )
+          else
+            ...items.map((item) {
+              if (item.isDirectory) {
+                return _buildFolderItem(item, indent: 16);
+              } else {
+                return _buildFileItem(item, indent: 16);
+              }
+            }),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildRootNode(String name, String path, bool isExpanded) {
+    return InkWell(
+      onTap: () => _toggleFolder(path),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        color: isExpanded ? Colors.transparent : Colors.black12,
+        child: Row(
+          children: [
+            Icon(
+              isExpanded
+                  ? Icons.keyboard_arrow_down
+                  : Icons.keyboard_arrow_right,
+              size: 16,
+              color: Colors.grey,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.note_add_outlined, size: 16),
+              onPressed: () => _showCreateDialog(path, isDirectory: false),
+              tooltip: 'New File',
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              padding: EdgeInsets.zero,
+            ),
+            IconButton(
+              icon: const Icon(Icons.create_new_folder_outlined, size: 16),
+              onPressed: () => _showCreateDialog(path, isDirectory: true),
+              tooltip: 'New Folder',
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              padding: EdgeInsets.zero,
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 16),
+              onPressed: _refresh,
+              tooltip: 'Refresh',
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              padding: EdgeInsets.zero,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFolderItem(FileItem item, {double indent = 0}) {
     final isExpanded = _expandedDirs.contains(item.path);
     final children = _cachedContents[item.path] ?? [];
 
@@ -133,6 +205,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
           isExpanded: isExpanded,
           onTap: () => _toggleFolder(item.path),
           onLongPress: () => _showContextMenu(item),
+          indent: indent,
           leading: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -152,27 +225,25 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
           ),
         ),
         if (isExpanded)
-          Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: Column(
-              children: children.map((child) {
-                if (child.isDirectory) {
-                  return _buildFolderItem(child);
-                } else {
-                  return _buildFileItem(child);
-                }
-              }).toList(),
-            ),
+          Column(
+            children: children.map((child) {
+              if (child.isDirectory) {
+                return _buildFolderItem(child, indent: indent + 12);
+              } else {
+                return _buildFileItem(child, indent: indent + 12);
+              }
+            }).toList(),
           ),
       ],
     );
   }
 
-  Widget _buildFileItem(FileItem item) {
+  Widget _buildFileItem(FileItem item, {double indent = 0}) {
     return _buildItemRow(
       item: item,
       onTap: () => _openFile(item),
       onLongPress: () => _showContextMenu(item),
+      indent: indent,
       leading: Padding(
         padding: const EdgeInsets.only(left: 16),
         child: Icon(
@@ -189,13 +260,14 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     required VoidCallback onTap,
     required VoidCallback onLongPress,
     required Widget leading,
+    required double indent,
     bool isExpanded = false,
   }) {
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: EdgeInsets.only(left: indent + 8, right: 8, top: 2, bottom: 2),
         child: Row(
           children: [
             leading,
@@ -438,37 +510,25 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
   }
 
   void _openProject() {
-    // TODO: Use file picker to select project folder
-    // For now, show a dialog to enter path manually
-    final controller = TextEditingController(
-      text: ref.read(currentDirectoryProvider),
-    );
-
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Open Project'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: '/path/to/project'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final path = controller.text.trim();
-              if (path.isNotEmpty) {
-                ref.read(currentDirectoryProvider.notifier).setPath(path);
-                _refresh();
-              }
+      isScrollControlled: true,
+      backgroundColor: AppTheme.background,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: DirectoryBrowser(
+          initialPath: ref.read(currentDirectoryProvider),
+          onSelect: (path) {
+            ref.read(currentDirectoryProvider.notifier).setPath(path);
+            ref.read(projectPathProvider.notifier).set(path);
+            _refresh();
+            // Close both the dialog and the drawer (if in mobile mode)
+            Navigator.pop(context);
+            if (Navigator.canPop(context)) {
               Navigator.pop(context);
-            },
-            child: const Text('Open'),
-          ),
-        ],
+            }
+          },
+        ),
       ),
     );
   }
@@ -493,5 +553,273 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     if (name.endsWith('.kt')) return const Color(0xFFCBA6F7);
     if (name.endsWith('.java')) return const Color(0xFFFAB387);
     return Colors.grey;
+  }
+}
+
+/// Directory browser widget for selecting project folder
+class DirectoryBrowser extends ConsumerStatefulWidget {
+  final String initialPath;
+  final void Function(String path) onSelect;
+
+  const DirectoryBrowser({
+    super.key,
+    required this.initialPath,
+    required this.onSelect,
+  });
+
+  @override
+  ConsumerState<DirectoryBrowser> createState() => _DirectoryBrowserState();
+}
+
+class _DirectoryBrowserState extends ConsumerState<DirectoryBrowser> {
+  late String _currentPath;
+  List<FileItem>? _items;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPath = widget.initialPath;
+    _loadDirectory();
+  }
+
+  Future<void> _loadDirectory() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final ops = ref.read(fileOperationsProvider);
+      final items = await ops.listDirectory(_currentPath);
+      // Filter only directories
+      final dirs = items.where((i) => i.isDirectory).toList();
+      dirs.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      if (mounted) {
+        setState(() {
+          _items = dirs;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString().contains('Permission denied')
+              ? 'Permission Denied'
+              : 'Error: $e';
+        });
+      }
+    }
+  }
+
+  void _navigateTo(String path) {
+    setState(() {
+      _currentPath = path;
+      _items = null;
+      _errorMessage = null;
+    });
+    _loadDirectory();
+  }
+
+  void _goUp() {
+    final parent = _currentPath.substring(0, _currentPath.lastIndexOf('/'));
+    if (parent.isNotEmpty) {
+      _navigateTo(parent);
+    } else if (_currentPath != '/') {
+      _navigateTo('/');
+    }
+  }
+
+  void _showCreateFolderDialog() {
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New Folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Folder name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isEmpty) return;
+              final navigator = Navigator.of(context);
+
+              final ops = ref.read(fileOperationsProvider);
+              final path = '$_currentPath/$name';
+
+              final success = await ops.createDirectory(path);
+
+              if (success) {
+                // Refresh list
+                _loadDirectory();
+              }
+
+              if (!mounted) return;
+              navigator.pop();
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: AppTheme.surface,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Select Project Folder',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_upward),
+                    onPressed: _currentPath != '/' ? _goUp : null,
+                    tooltip: 'Go up',
+                  ),
+                  Expanded(
+                    child: Text(
+                      _currentPath,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppTheme.textSecondary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.create_new_folder),
+                    onPressed: _showCreateFolderDialog,
+                    tooltip: 'New Folder',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Directory list
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _errorMessage != null
+                  ? _buildErrorView()
+                  : _items == null || _items!.isEmpty
+                      ? const Center(child: Text('No subdirectories'))
+                      : ListView.builder(
+                          itemCount: _items!.length,
+                          itemBuilder: (context, index) {
+                            final item = _items![index];
+                            return ListTile(
+                              leading: const Icon(Icons.folder,
+                                  color: AppTheme.syntaxType),
+                              title: Text(item.name),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => _navigateTo(item.path),
+                            );
+                          },
+                        ),
+        ),
+        // Action buttons
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+            color: AppTheme.surface,
+            border: Border(top: BorderSide(color: AppTheme.surfaceVariant)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => widget.onSelect(_currentPath),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.secondary,
+                    foregroundColor: Colors.black,
+                  ),
+                  child: const Text('Select This Folder'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorView() {
+    final isPermissionDenied = _errorMessage == 'Permission Denied';
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isPermissionDenied ? Icons.lock_outline : Icons.error_outline,
+              size: 48,
+              color: isPermissionDenied ? Colors.orange : Colors.red,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage ?? 'Unknown error',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16),
+            ),
+            if (isPermissionDenied) ...[
+              const SizedBox(height: 24),
+              const Text(
+                'Termux needs shared storage permission to access /sdcard.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  ref.read(termuxBridgeProvider).setupStorage();
+                  // Show tooltip or snackbar
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text(
+                            'Launched setup in Termux. Please allow permission there.')),
+                  );
+                },
+                icon: const Icon(Icons.storage),
+                label: const Text('Setup Storage'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.secondary,
+                  foregroundColor: Colors.black,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -1,20 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart';
-import 'package:dartssh2/dartssh2.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import '../termux/termux_providers.dart';
-
-enum TerminalConnectionState {
-  checking,
-  termuxMissing,
-  sshConnecting,
-  sshFailed,
-  connected,
-}
+import '../core/providers.dart';
+import 'terminal_session.dart';
 
 class TerminalWidget extends ConsumerStatefulWidget {
   const TerminalWidget({super.key});
@@ -24,204 +17,178 @@ class TerminalWidget extends ConsumerStatefulWidget {
 }
 
 class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
-  late final Terminal _terminal;
-  final _terminalController = TerminalController();
-
-  SSHClient? _client;
-  TerminalConnectionState _connectionState = TerminalConnectionState.checking;
-  String? _lastError;
-
   @override
   void initState() {
     super.initState();
-    _terminal = Terminal(maxLines: 10000);
-
+    // Initialize first session if none exists
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAndConnect();
+      _ensureSession();
     });
   }
 
-  Future<void> _checkAndConnect() async {
-    setState(() {
-      _connectionState = TerminalConnectionState.checking;
-      _lastError = null;
-    });
-
-    final installed = await ref.read(termuxInstalledProvider.future);
-    if (!installed) {
-      if (mounted) {
-        setState(() {
-          _connectionState = TerminalConnectionState.termuxMissing;
-        });
-      }
-      return;
-    }
-
-    _connectToTermux();
-  }
-
-  Future<void> _connectToTermux() async {
-    setState(() {
-      _connectionState = TerminalConnectionState.sshConnecting;
-    });
-
-    _terminal.write('Connecting to Termux via SSH...\\r\\n');
-
-    try {
-      final socket = await SSHSocket.connect('127.0.0.1', 8022)
-          .timeout(const Duration(seconds: 3));
-
-      _terminal.write('Connected! Authenticating...\\r\\n');
-
-      final bridge = ref.read(termuxBridgeProvider);
-      final uid = await bridge.getTermuxUid();
-      String username = 'u0_a251';
-
-      if (uid != null && uid >= 10000) {
-        username = 'u0_a${uid - 10000}';
-      }
-
-      _client = SSHClient(
-        socket,
-        username: username,
-        onPasswordRequest: () => '123456',
-      );
-
-      final width = _terminal.viewWidth > 0 ? _terminal.viewWidth : 80;
-      final height = _terminal.viewHeight > 0 ? _terminal.viewHeight : 24;
-
-      final session = await _client!.shell(
-        pty: SSHPtyConfig(
-          width: width,
-          height: height,
-          type: 'xterm-256color',
-        ),
-      );
-
-      setState(() {
-        _connectionState = TerminalConnectionState.connected;
-      });
-
-      _terminal
-          .write('\\x1B[32m✔ Connected to Termux Environment\\x1B[0m\\r\\n');
-      _terminal.write('Type "exit" to close session.\\r\\n\\r\\n');
-
-      session.stdout.listen((data) {
-        _terminal.write(String.fromCharCodes(data));
-      });
-
-      session.stderr.listen((data) {
-        _terminal.write(String.fromCharCodes(data));
-      });
-
-      _terminal.onOutput = (data) {
-        if (_client != null && !_client!.isClosed) {
-          session.write(Uint8List.fromList(utf8.encode(data)));
-        }
-      };
-
-      _terminal.onResize = (w, h, pw, ph) {
-        session.resizeTerminal(w, h);
-      };
-
-      await session.done;
-      _terminal.write('\\r\\nSession closed.\\r\\n');
-    } catch (e) {
-      _terminal.write('\\x1B[31mSSH Error: $e\\x1B[0m\\r\\n');
-      if (mounted) {
-        setState(() {
-          _connectionState = TerminalConnectionState.sshFailed;
-          _lastError = e.toString();
-        });
+  Future<void> _ensureSession() async {
+    final sessions = ref.read(terminalSessionsProvider).sessions;
+    if (sessions.isEmpty) {
+      final installed = await ref.read(termuxInstalledProvider.future);
+      if (installed) {
+        ref.read(terminalSessionsProvider.notifier).createSession();
       }
     }
   }
 
-  Future<void> _launchTermux() async {
-    final bridge = ref.read(termuxBridgeProvider);
-    await bridge.openTermux();
-  }
-
-  @override
-  void dispose() {
-    _terminalController.dispose();
-    _client?.close();
-    super.dispose();
+  void _sendCommand(String cmd) {
+    final activeSession = ref.read(terminalSessionsProvider).activeSession;
+    if (activeSession != null &&
+        activeSession.shell != null &&
+        activeSession.client != null &&
+        !activeSession.client!.isClosed) {
+      activeSession.shell!.write(Uint8List.fromList(utf8.encode('$cmd\r')));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Show Termux missing state
-    if (_connectionState == TerminalConnectionState.termuxMissing) {
-      return _buildTermuxMissingUI();
-    }
+    final sessionsState = ref.watch(terminalSessionsProvider);
+    final activeSession = sessionsState.activeSession;
 
-    // Show SSH failed state with Launch Termux button
-    if (_connectionState == TerminalConnectionState.sshFailed) {
-      return _buildSSHFailedUI();
-    }
+    // Listen for external commands (like from Run button)
+    ref.listen(terminalCommandProvider, (previous, next) {
+      if (next != null) {
+        _sendCommand(next);
+        ref.read(terminalCommandProvider.notifier).clear();
+      }
+    });
 
-    return Container(
-      color: AppTheme.editorBg,
-      child: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: TerminalView(
-              _terminal,
-              controller: _terminalController,
-              autofocus: true,
-              backgroundOpacity: 0,
-              textStyle: const TerminalStyle(
-                fontSize: 13,
-                fontFamily: 'JetBrains Mono',
+    // Check if termux is installed
+    return ref.watch(termuxInstalledProvider).when(
+          data: (installed) {
+            if (!installed) return _buildTermuxMissingUI();
+            if (sessionsState.sessions.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            return Container(
+              color: AppTheme.editorBg,
+              child: Column(
+                children: [
+                  _buildTabBar(sessionsState),
+                  Expanded(
+                    child: activeSession == null
+                        ? const Center(child: Text('No active session'))
+                        : _buildSessionView(activeSession),
+                  ),
+                ],
               ),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, s) => Center(child: Text('Error: $e')),
+        );
+  }
+
+  Widget _buildTabBar(TerminalSessionsState state) {
+    return Container(
+      height: 40,
+      color: AppTheme.surface,
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: state.sessions.length,
+              itemBuilder: (context, index) {
+                final session = state.sessions[index];
+                final isActive = session.id == state.activeSessionId;
+
+                return GestureDetector(
+                  onTap: () => ref
+                      .read(terminalSessionsProvider.notifier)
+                      .selectSession(session.id),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isActive ? AppTheme.editorBg : Colors.transparent,
+                      border: Border(
+                        right: const BorderSide(color: AppTheme.surfaceVariant),
+                        bottom: BorderSide(
+                          color: isActive
+                              ? AppTheme.secondary
+                              : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isActive ? Icons.terminal : Icons.terminal_outlined,
+                          size: 14,
+                          color: isActive ? AppTheme.secondary : Colors.grey,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          session.name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isActive ? Colors.white : Colors.grey,
+                            fontWeight:
+                                isActive ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (isActive && state.sessions.length > 1)
+                          GestureDetector(
+                            onTap: () => ref
+                                .read(terminalSessionsProvider.notifier)
+                                .closeSession(session.id),
+                            child: const Icon(Icons.close,
+                                size: 14, color: Colors.grey),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add, size: 20),
+            onPressed: () =>
+                ref.read(terminalSessionsProvider.notifier).createSession(),
+            tooltip: 'New Session',
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(
-          bottom: BorderSide(color: AppTheme.surfaceVariant),
+  Widget _buildSessionView(TerminalSession session) {
+    if (session.state == SessionState.connecting) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text('Connecting to ${session.name}...'),
+          ],
         ),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.terminal, size: 14, color: AppTheme.secondary),
-          const SizedBox(width: 8),
-          Text(
-            _connectionState == TerminalConnectionState.sshConnecting
-                ? 'CONNECTING...'
-                : 'TERMINAL (Termux SSH)',
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary,
-              letterSpacing: 1,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.refresh, size: 16),
-            onPressed: () {
-              _client?.close();
-              _terminal.eraseDisplay();
-              _checkAndConnect();
-            },
-            tooltip: 'Reconnect',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-            color: AppTheme.textDisabled,
-          ),
-        ],
+      );
+    }
+
+    if (session.state == SessionState.failed) {
+      return _buildSSHFailedUI(session);
+    }
+
+    return TerminalView(
+      session.terminal,
+      controller: session.controller,
+      autofocus: true,
+      backgroundOpacity: 0,
+      textStyle: const TerminalStyle(
+        fontSize: 13,
+        fontFamily: 'JetBrains Mono',
       ),
     );
   }
@@ -265,7 +232,7 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
             ),
             const SizedBox(height: 12),
             TextButton(
-              onPressed: _checkAndConnect,
+              onPressed: () => ref.invalidate(termuxInstalledProvider),
               child: const Text('I have installed it, Retry'),
             ),
           ],
@@ -274,7 +241,7 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
     );
   }
 
-  Widget _buildSSHFailedUI() {
+  Widget _buildSSHFailedUI(TerminalSession session) {
     return Container(
       color: AppTheme.editorBg,
       child: Center(
@@ -285,9 +252,9 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
             children: [
               const Icon(Icons.link_off, size: 48, color: Colors.orange),
               const SizedBox(height: 16),
-              const Text(
-                'SSH Connection Failed',
-                style: TextStyle(
+              Text(
+                'Connection Failed: ${session.name}',
+                style: const TextStyle(
                   color: AppTheme.textPrimary,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -299,19 +266,19 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                 textAlign: TextAlign.center,
               ),
-              if (_lastError != null) ...[
+              if (session.lastError != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  _lastError!.length > 80
-                      ? '${_lastError!.substring(0, 80)}...'
-                      : _lastError!,
+                  session.lastError!.length > 80
+                      ? '${session.lastError!.substring(0, 80)}...'
+                      : session.lastError!,
                   style: const TextStyle(color: AppTheme.error, fontSize: 11),
                   textAlign: TextAlign.center,
                 ),
               ],
               const SizedBox(height: 24),
               ElevatedButton.icon(
-                onPressed: _launchTermux,
+                onPressed: () => ref.read(termuxBridgeProvider).openTermux(),
                 icon: const Icon(Icons.launch),
                 label: const Text('Open Termux App'),
                 style: ElevatedButton.styleFrom(
@@ -330,8 +297,9 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: () {
-                  _terminal.eraseDisplay();
-                  _connectToTermux();
+                  ref
+                      .read(terminalSessionsProvider.notifier)
+                      .connectSession(session);
                 },
                 icon: const Icon(Icons.refresh),
                 label: const Text('Retry Connection'),
