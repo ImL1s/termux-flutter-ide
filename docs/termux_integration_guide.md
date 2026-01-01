@@ -97,11 +97,28 @@ Flutter in Termux is custom-installed via `termux-flutter-wsl`.
 ### Path Configuration
 - **Location**: `~/flutter` (Default)
 - **Path**: `export PATH=$HOME/flutter/bin:$PATH`
+## 11. 進階功能整合 (Feasibility Findings)
 
+### 11.1 Dart & Flutter 路徑
+在 Termux 環境中，`dart` 執行檔可能不在 `PATH` 中。
+- **偵測到的主要路徑**: `/data/data/com.termux/files/usr/opt/flutter/bin/cache/dart-sdk/bin/dart`
+- **備用搜尋指令**: `find /data/data/com.termux/files -name dart -type f`
+
+### 11.2 LSP (Dart Language Server) 執行
+直接執行 `dart language-server` 可能會因為 `dartaotruntime` 錯誤而失敗。
+- **解決方案**: 直接執行 JIT Snapshot。
+- **指令**: 
+  ```bash
+  /data/data/com.termux/files/usr/opt/flutter/bin/cache/dart-sdk/bin/dart \
+  /data/data/com.termux/files/usr/opt/flutter/bin/cache/dart-sdk/bin/snapshots/analysis_server.dart.snapshot \
+  --lsp
+  ```
+
+### 11.3 Git 整合
+- **指令**: 使用 `git status --porcelain` 進行機器可讀的解析。
+- **認證**: 直接復用 Termux 內已配置的 Git 帳號與 SSH Key，無需在 Flutter 端重新實作。
 ## 10. System Permissions (Android 10+)
 To Execute commands from the IDE (background) reliably, Termux requires the **"Display over other apps"** (Overlay) permission.
 - **Why?**: Android 10+ blocks background apps from starting services/activities. Termux needs this to effectively receive and execute Intents sent by the IDE.
 - **Action**: When prompted by Termux ("Allow display over other apps"), users **MUST** select **Allow**.
 - **Without this**: Bootstrap commands may be silently blocked by Android OS, causing SSH connection failures.
-
-
