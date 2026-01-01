@@ -22,9 +22,10 @@ import '../settings/settings_page.dart';
 import '../git/git_clone_dialog.dart';
 import '../core/providers.dart';
 import '../run/flutter_runner_widget.dart';
-import '../run/vm_service_manager.dart'; // Import for VMServiceStatus and provider
-import '../run/flutter_runner_service.dart'; // Import for flutterRunnerServiceProvider
+import '../run/vm_service_manager.dart';
+import '../run/flutter_runner_service.dart';
 import 'flutter_create_dialog.dart';
+import 'package_search_dialog.dart';
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -111,6 +112,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         category: 'Flutter',
         icon: Icons.add_circle_outline,
         action: _createNewProject,
+      ),
+    );
+
+    registry.register(
+      Command(
+        id: 'flutter.pub.add',
+        title: 'Add Dependency (Pubspec Assist)',
+        category: 'Flutter',
+        icon: Icons.library_add,
+        action: () => showPackageSearchDialog(context),
       ),
     );
   }

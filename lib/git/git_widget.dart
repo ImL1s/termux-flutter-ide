@@ -4,6 +4,7 @@ import '../core/providers.dart';
 import '../theme/app_theme.dart';
 import 'git_service.dart';
 import 'git_history_widget.dart';
+import 'git_diff_dialog.dart';
 
 class GitWidget extends ConsumerStatefulWidget {
   const GitWidget({super.key});
@@ -291,20 +292,31 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
   Widget _buildChangeItem(GitFileChange change, String currentDir) {
     return ListTile(
       dense: true,
-      contentPadding: const EdgeInsets.only(left: 4, right: 8),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       leading: _getStatusIcon(change),
-      title: Text(change.path, style: const TextStyle(fontSize: 13)),
+      title: Text(
+        change.path,
+        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+      ),
       subtitle: Text(
         change.isStaged
             ? 'Staged'
             : (change.isUntracked ? 'Untracked' : 'Modified'),
-        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+        style: const TextStyle(fontSize: 12, color: AppTheme.textDisabled),
       ),
+      onTap: () => showGitDiff(context, currentDir, change.path),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: Icon(change.isStaged ? Icons.remove : Icons.add, size: 16),
+            icon: Icon(
+              change.isStaged
+                  ? Icons.remove_circle_outline
+                  : Icons.add_circle_outline,
+              size: 20,
+              color: change.isStaged ? AppTheme.error : AppTheme.secondary,
+            ),
             onPressed: () async {
               final service = ref.read(gitServiceProvider);
               if (change.isStaged) {
@@ -315,7 +327,7 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
               ref.invalidate(gitStatusProvider);
             },
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           ),
         ],
       ),
