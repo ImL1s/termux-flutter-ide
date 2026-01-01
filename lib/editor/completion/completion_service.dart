@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/lsp_service.dart';
 
 enum SuggestionType { keyword, snippet }
 
@@ -117,22 +118,29 @@ class _\${1:MyWidget}State extends State<\${1:MyWidget}> {
   }
 
   /// Generate suggestions based on current input
-  void updateSuggestions(String currentWord, String fullLine) {
-    if (currentWord.isEmpty) {
+  Future<void> updateSuggestions(String currentWord, String fullLine,
+      {String? filePath, int? line, int? column}) async {
+    if (currentWord.isEmpty && !fullLine.endsWith('.')) {
       state = const CompletionState(suggestions: []);
       return;
     }
 
+    // Set loading state if we're going to use LSP
+    final isDart = filePath?.endsWith('.dart') ?? false;
+    if (isDart) {
+      state = CompletionState(suggestions: state.suggestions, isLoading: true);
+    }
+
     final List<Suggestion> results = [];
 
-    // 1. Check Snippets
+    // 1. Check Snippets (Sync)
     for (final snippet in _dartSnippets) {
       if (snippet.label.startsWith(currentWord)) {
         results.add(snippet);
       }
     }
 
-    // 2. Check File Keywords
+    // 2. Check File Keywords (Sync)
     for (final keyword in _fileKeywords) {
       if (keyword.startsWith(currentWord) && keyword != currentWord) {
         results.add(
@@ -145,7 +153,31 @@ class _\${1:MyWidget}State extends State<\${1:MyWidget}> {
       }
     }
 
-    state = CompletionState(suggestions: results);
+    // 3. Check LSP (Async)
+    if (isDart && filePath != null && line != null && column != null) {
+      try {
+        final lsp = ref.read(lspServiceProvider);
+        final lspItems = await lsp.getCompletions(filePath, line, column);
+
+        for (final item in lspItems) {
+          final label = item['label'] as String;
+          final insertText = (item['insertText'] ?? label) as String;
+          final detail = item['detail'] as String?;
+
+          results.add(Suggestion(
+            label: label,
+            insertText: insertText,
+            type: SuggestionType
+                .keyword, // Could map LSP kinds to SuggestionType later
+            detail: detail,
+          ));
+        }
+      } catch (e) {
+        print('Completion LSP Error: $e');
+      }
+    }
+
+    state = CompletionState(suggestions: results, isLoading: false);
   }
 
   void clear() {
@@ -155,5 +187,5 @@ class _\${1:MyWidget}State extends State<\${1:MyWidget}> {
 
 final completionProvider =
     NotifierProvider<CompletionNotifier, CompletionState>(
-      CompletionNotifier.new,
-    );
+  CompletionNotifier.new,
+);

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:async'; // For Timer
+import 'dart:async'; // For Timer and unawaited
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter_highlight/themes/monokai-sublime.dart';
 import 'package:flutter_highlight/themes/vs2015.dart';
@@ -24,6 +24,7 @@ import 'coding_toolbar.dart';
 import 'editor_request_provider.dart'; // Import Request Provider
 import 'completion/completion_service.dart';
 import 'package:termux_flutter_ide/run/breakpoint_service.dart';
+import '../services/lsp_service.dart';
 
 class CodeEditorWidget extends ConsumerStatefulWidget {
   const CodeEditorWidget({super.key});
@@ -228,6 +229,12 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
       final ops = ref.read(fileOperationsProvider);
       final content = await ops.readFile(path);
 
+      if (path.endsWith('.dart')) {
+        final lsp = ref.read(lspServiceProvider);
+        unawaited(
+            lsp.start().then((_) => lsp.notifyDidOpen(path, content ?? '')));
+      }
+
       if (content != null) {
         if (!mounted) return;
         setState(() {
@@ -283,6 +290,13 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
     // 2. Auto-completion trigger
     _updateCompletion();
 
+    // 2b. LSP Sync
+    if (_currentFilePath != null && _currentFilePath!.endsWith('.dart')) {
+      ref
+          .read(lspServiceProvider)
+          .notifyDidChange(_currentFilePath!, currentContent);
+    }
+
     // 3. Debounce auto-save
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(seconds: 2), () {
@@ -301,37 +315,47 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
 
     final text = _controller!.text;
     final cursor = selection.baseOffset;
-    if (cursor == 0) return;
 
-    // Get current line
-    // Find last newline before cursor
+    // Calculate 0-based line and column for LSP
+    int line = 0;
+    int column = 0;
+    for (int i = 0; i < cursor; i++) {
+      if (text[i] == '\n') {
+        line++;
+        column = 0;
+      } else {
+        column++;
+      }
+    }
+
+    // Get current line for local prefix matching
     int lineStart = text.lastIndexOf('\n', cursor - 1);
     lineStart = lineStart == -1 ? 0 : lineStart + 1;
-
-    // Find next newline after cursor
     int lineEnd = text.indexOf('\n', cursor);
     lineEnd = lineEnd == -1 ? text.length : lineEnd;
-
     final fullLine = text.substring(lineStart, lineEnd);
 
     // Get word before cursor
     int wordStart = cursor - 1;
     while (wordStart >= 0) {
       final char = text[wordStart];
-      // Allow letters, numbers, underscores
       if (!RegExp(r'[a-zA-Z0-9_]').hasMatch(char)) {
         break;
       }
       wordStart--;
     }
-    wordStart++; // Move back to first char
-
+    wordStart++;
     final currentWord = text.substring(wordStart, cursor);
 
-    if (currentWord.isNotEmpty) {
-      ref
-          .read(completionProvider.notifier)
-          .updateSuggestions(currentWord, fullLine);
+    // Trigger completion if we have a word OR if we just typed a dot
+    if (currentWord.isNotEmpty || fullLine.trim().endsWith('.')) {
+      ref.read(completionProvider.notifier).updateSuggestions(
+            currentWord,
+            fullLine,
+            filePath: _currentFilePath,
+            line: line,
+            column: column,
+          );
     } else {
       ref.read(completionProvider.notifier).clear();
     }
