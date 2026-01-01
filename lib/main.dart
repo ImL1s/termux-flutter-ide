@@ -7,6 +7,7 @@ import 'package:termux_flutter_ide/editor/editor_page.dart';
 import 'package:termux_flutter_ide/settings/settings_page.dart';
 import 'package:termux_flutter_ide/termux/ssh_service.dart';
 import 'package:termux_flutter_ide/core/snackbar_service.dart';
+import 'package:termux_flutter_ide/setup/setup_service.dart';
 import 'package:termux_flutter_ide/setup/setup_wizard.dart';
 
 void main() {
@@ -47,17 +48,13 @@ class _TermuxFlutterIDEState extends ConsumerState<TermuxFlutterIDE> {
       await ref.read(sshServiceProvider).connect();
 
       // Check if setup is needed
-      final sshConnected = ref.read(sshServiceProvider).isConnected;
-      if (!sshConnected) {
-        // Wait a bit to be sure it's not just a slow connection
-        await Future.delayed(const Duration(seconds: 1));
-        if (!ref.read(sshServiceProvider).isConnected && mounted) {
-          // Redirect to setup if SSH failed (likely first time or not set up)
-          // But be careful not to annoy users if they just have ssh off temporarily.
-          // Maybe only if no keys/config?
-          // For now, let's just push to setup if not connected, the wizard handles the "retry" or "config"
-          _router.push('/setup');
-        }
+      await ref.read(setupServiceProvider.notifier).checkEnvironment();
+
+      final newSetupState = ref.read(setupServiceProvider);
+
+      // Redirect if SSH failed OR Flutter is missing
+      if (!newSetupState.isSSHConnected || !newSetupState.isFlutterInstalled) {
+        if (mounted) _router.push('/setup');
       }
     });
   }

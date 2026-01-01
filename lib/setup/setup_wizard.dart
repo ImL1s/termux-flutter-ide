@@ -458,6 +458,19 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
                 ),
               ),
             ),
+          const SizedBox(height: 24),
+          // Add a button to manually trigger check, especially useful for Bridge flow
+          OutlinedButton.icon(
+            onPressed: () =>
+                ref.read(setupServiceProvider.notifier).checkEnvironment(),
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('我已在 Termux 完成安裝，點此檢測'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF89B4FA),
+              side: const BorderSide(color: Color(0xFF89B4FA)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
         ],
       );
     }
@@ -467,6 +480,30 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          if (state.installLog != null)
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF11111B),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: const Color(0xFFF38BA8)), // Red border for error
+              ),
+              height: 100,
+              width: double.infinity,
+              constraints: const BoxConstraints(maxWidth: 500),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: Text(
+                  state.installLog!,
+                  style: const TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 11,
+                      color: Color(0xFFF38BA8)), // Red text
+                ),
+              ),
+            ),
           const Icon(Icons.flutter_dash, size: 64, color: Color(0xFF89B4FA)),
           const SizedBox(height: 24),
           const Text(
@@ -549,7 +586,7 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
                     ),
                     const SizedBox(height: 8),
                     _buildCodeBlock(
-                      'curl -sL https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/main/install_termux_flutter.sh | bash',
+                      'curl -sL https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_termux_flutter.sh | bash',
                     ),
                     const SizedBox(height: 12),
                     TextButton.icon(

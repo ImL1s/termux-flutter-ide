@@ -40,6 +40,8 @@
     <queries>
         <!-- Termux package for RUN_COMMAND -->
         <package android:name="com.termux" />
+        <!-- Termux:X11 for display -->
+        <package android:name="com.termux.x11" />
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

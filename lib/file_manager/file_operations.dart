@@ -17,9 +17,15 @@ class FileOperations {
         throw Exception("Failed to connect to Termux: $e");
       }
     }
-    // Use absolute path for flutter to bypass environment issues in non-interactive SSH
-    const flutterPath = '/data/data/com.termux/files/home/flutter/bin';
-    final cmdWithEnv = 'export PATH=\$PATH:$flutterPath && $cmd';
+    // Use multiple potential paths for flutter to ensure it's found in different installation methods
+    // /usr/bin is for .deb (system), ~/flutter/bin is for manual install
+    const systemPath = '/data/data/com.termux/files/usr/bin';
+    const userPath = '/data/data/com.termux/files/home/flutter/bin';
+
+    // We source the flutter profile if it exists, and prepend common paths to PATH
+    final cmdWithEnv =
+        'source /data/data/com.termux/files/usr/etc/profile.d/flutter.sh 2>/dev/null; '
+        'export PATH=\$PATH:$systemPath:$userPath; $cmd';
     return await _ssh.execute(cmdWithEnv);
   }
 

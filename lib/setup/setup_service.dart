@@ -76,12 +76,15 @@ class SetupService extends Notifier<SetupState> {
 
     if (isConnected) {
       try {
-        final flutterPath = await sshService.execute('which flutter');
-        isFlutter = flutterPath.trim().isNotEmpty;
+        final result = await sshService.executeWithDetails('which flutter');
+        isFlutter = result.exitCode == 0 && result.stdout.trim().isNotEmpty;
         isX11 = await x11Service.isInstalled();
       } catch (e) {
         // Ignore errors during check
       }
+    } else {
+      // If SSH not connected, try checking via bridge (Intent)
+      isFlutter = await termuxBridge.isFlutterInstalled();
     }
 
     state = state.copyWith(
@@ -89,6 +92,8 @@ class SetupService extends Notifier<SetupState> {
       isSSHConnected: isConnected,
       isFlutterInstalled: isFlutter,
       isX11Installed: isX11,
+      // If we found flutter, we are definitely not "installing" anymore
+      isInstalling: isFlutter ? false : state.isInstalling,
     );
   }
 
@@ -193,17 +198,34 @@ class SetupService extends Notifier<SetupState> {
     }
 
     state = state.copyWith(
-        isInstalling: true,
-        installLog: '正在開始安裝 Flutter (透過 SSH)...\n這可能需要幾分鐘，請勿關閉應用程式。\n\n');
+        isInstalling: true, installLog: '正在初始化安裝程序...\n請勿關閉應用程式。\n\n');
 
     try {
-      const installCmd =
-          'curl -sL https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/main/install_termux_flutter.sh | bash';
+      // 1. 下載腳本
+      state =
+          state.copyWith(installLog: '${state.installLog ?? ""}正在下載安裝腳本...\n');
 
-      // Use executeStream to show real-time progress
-      // Note: We need to append logs, not replace logging state continuously which might be heavy?
-      // State updates trigger rebuilds. Let's buffer or just update.
-      // Rebuilding on every chunk is fine for now usually.
+      final downloadCmd =
+          'curl -sLf https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_termux_flutter.sh -o ~/install_termux_flutter.sh';
+      final downloadResult = await sshService.executeWithDetails(downloadCmd);
+
+      if (downloadResult.exitCode != 0) {
+        throw Exception(
+            '下載失敗 (Code ${downloadResult.exitCode}): ${downloadResult.stderr}\n${downloadResult.stdout}');
+      }
+
+      state = state.copyWith(
+          installLog: '${state.installLog ?? ""}下載成功，正在賦予執行權限...\n');
+
+      // 2. 賦予權限
+      await sshService
+          .executeWithDetails('chmod +x ~/install_termux_flutter.sh');
+
+      // 3. 執行腳本
+      state = state.copyWith(
+          installLog: '${state.installLog ?? ""}開始執行安裝腳本...\n這個過程可能需要幾分鐘。\n');
+
+      const installCmd = 'bash ~/install_termux_flutter.sh';
 
       await for (final log in sshService.executeStream(installCmd)) {
         state = state.copyWith(
@@ -211,15 +233,26 @@ class SetupService extends Notifier<SetupState> {
         );
       }
 
-      state = state.copyWith(
-        isInstalling: false,
-        installLog: '${state.installLog ?? ""}安裝腳本執行完畢。\n',
-        isFlutterInstalled: true,
-      );
+      // Verify installation result
+      final result = await sshService.executeWithDetails('which flutter');
+      if (result.exitCode == 0 && result.stdout.trim().isNotEmpty) {
+        state = state.copyWith(
+          isInstalling: false,
+          installLog: '${state.installLog ?? ""}安裝腳本執行完畢，Flutter 已準備就緒。\n',
+          isFlutterInstalled: true,
+        );
+      } else {
+        state = state.copyWith(
+          isInstalling: false,
+          installLog:
+              '${state.installLog ?? ""}安裝腳本執行完畢，但無法找到 Flutter 指令。\n請檢查上方日誌了解詳細資訊。\n',
+          isFlutterInstalled: false,
+        );
+      }
     } catch (e) {
       state = state.copyWith(
         isInstalling: false,
-        installLog: '${state.installLog ?? ""}安裝失敗: $e\n',
+        installLog: '${state.installLog ?? ""}安裝過程中發生錯誤: $e\n',
       );
     }
   }

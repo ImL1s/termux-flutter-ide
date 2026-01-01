@@ -1,6 +1,7 @@
 package com.iml1s.termux_flutter_ide
 
 import android.content.Intent
+import android.util.Log
 import android.content.pm.PackageManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -65,12 +66,15 @@ class MainActivity : FlutterActivity() {
 
     private fun getTermuxUid(): Int? {
         return try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            val uid = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 packageManager.getPackageUid(TERMUX_PACKAGE, 0)
             } else {
                 packageManager.getApplicationInfo(TERMUX_PACKAGE, 0).uid
             }
+            Log.d("MainActivity", "Termux UID = $uid")
+            uid
         } catch (e: Exception) {
+            Log.d("MainActivity", "Failed to get Termux UID: ${e.message}")
             null
         }
     }

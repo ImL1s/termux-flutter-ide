@@ -1,6 +1,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:device_apps/device_apps.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart'; // Import Flag
+import 'package:url_launcher/url_launcher.dart'; // For opening download link
 import 'launch_config.dart';
 import '../terminal/terminal_session.dart';
 import '../core/providers.dart';
@@ -171,12 +175,55 @@ class FlutterRunnerService {
 
       final cmdBuffer = StringBuffer();
 
-      // Check if targeting Linux and add DISPLAY setup
-      final isLinuxTarget = config.deviceId?.toLowerCase() == 'linux';
-      if (isLinuxTarget) {
+      // Check if targeting Linux (explicitly or implicitly) and add X11 setup
+      // If deviceId is null, Flutter defaults to available devices. On Termux, 'linux' is often the default/only choice for 'run'.
+      // We assume if we are in Termux (which this IDE is), and running locally, we likely need X11 for the Linux target.
+      final isExplicitLinux = config.deviceId?.toLowerCase() == 'linux';
+
+      // Heuristic: If deviceId is null, or explicit linux, set DISPLAY.
+      // Setting DISPLAY=:0 usually doesn't hurt other targets (like web-server), but implies X11 usage.
+      if (isExplicitLinux || config.deviceId == null) {
+        // X11 Detection & Auto-Launch
+        final isX11Installed =
+            await DeviceApps.isAppInstalled('com.termux.x11');
+
+        if (!isX11Installed) {
+          session.onDataReceived(
+              '\x1B[31m[IDE] ❌ Termux:X11 APP is NOT installed.\x1B[0m\r\n');
+          session.onDataReceived(
+              '\x1B[1;33m[IDE] ⚠️ Linux GUI apps require the "Termux:X11" companion app to display content.\x1B[0m\r\n');
+          session.onDataReceived(
+              '\x1B[1;34m[IDE] 🔗 Please download it from: https://github.com/termux/termux-x11/releases\x1B[0m\r\n');
+
+          stateNotifier.setState(RunnerState.error);
+          errorNotifier.setError('請先安裝 Termux:X11 APP 以顯示畫面');
+          await launchUrl(
+              Uri.parse('https://github.com/termux/termux-x11/releases'),
+              mode: LaunchMode.externalApplication);
+          return;
+        } else {
+          session.onDataReceived(
+              '\x1B[1;32m[IDE] ✔ Termux:X11 detected, attempting to launch...\x1B[0m\r\n');
+          try {
+            // Launch Termux:X11 to ensure it's active
+            final intent = AndroidIntent(
+              action: 'android.intent.action.MAIN',
+              package: 'com.termux.x11',
+              category: 'android.intent.category.LAUNCHER',
+              flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+            );
+            await intent.launch();
+          } catch (e) {
+            session.onDataReceived(
+                '\x1B[1;33m[IDE] ⚠️ Failed to auto-launch Termux:X11: $e\x1B[0m\r\n');
+          }
+        }
+
         session.onDataReceived(
-            '\x1B[1;35m[IDE] 🖥️ Linux target detected, setting up X11...\x1B[0m\r\n');
+            '\x1B[1;35m[IDE] 🖥️ Linux environment detected (Termux environment), ensuring DISPLAY=:0...\x1B[0m\r\n');
         cmdBuffer.write('export DISPLAY=:0 && ');
+        // Also possibly needed for Termux-X11
+        cmdBuffer.write('export PULSE_SERVER=tcp:127.0.0.1:4713 && ');
       }
 
       // Env vars
