@@ -44,19 +44,37 @@ class _TermuxFlutterIDEState extends ConsumerState<TermuxFlutterIDE> {
   void initState() {
     super.initState();
     // Start SSH connection globally on app launch
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await ref.read(sshServiceProvider).connect();
+    // Use Future.microtask or just unawaited async to ensure UI renders first
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initApp();
+    });
+  }
 
-      // Check if setup is needed
+  Future<void> _initApp() async {
+    // 1. Connect SSH (don't block UI if it hangs)
+    try {
+      ref
+          .read(sshServiceProvider)
+          .connect(); // Fire and forget (internal state handles status)
+    } catch (e) {
+      print('Init SSH failed: $e');
+    }
+
+    // 2. Check Environment
+    try {
       await ref.read(setupServiceProvider.notifier).checkEnvironment();
-
       final newSetupState = ref.read(setupServiceProvider);
 
-      // Redirect if SSH failed OR Flutter is missing
-      if (!newSetupState.isSSHConnected || !newSetupState.isFlutterInstalled) {
+      // Redirect if needed
+      if ((!newSetupState.isSSHConnected ||
+              !newSetupState.isFlutterInstalled) &&
+          mounted) {
+        // Only redirect if we are sure
         if (mounted) _router.push('/setup');
       }
-    });
+    } catch (e) {
+      print('Init CheckEnvironment failed: $e');
+    }
   }
 
   @override

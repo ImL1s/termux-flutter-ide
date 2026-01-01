@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'flutter_runner_service.dart';
+import 'vm_service_manager.dart';
 
 /// Floating Hot Reload control bar
 class HotReloadControls extends ConsumerWidget {
@@ -49,6 +50,11 @@ class HotReloadControls extends ConsumerWidget {
                 onPressed: () => runnerService.hotReload(),
                 shortcut: 'r',
               ),
+
+              const SizedBox(width: 4),
+
+              // Pause/Resume Button
+              _PauseResumeButton(),
 
               const SizedBox(width: 4),
 
@@ -150,6 +156,7 @@ class InlineHotReloadControls extends ConsumerWidget {
           onPressed: () => runnerService.hotReload(),
           visualDensity: VisualDensity.compact,
         ),
+        const InlinePauseResumeButton(),
         IconButton(
           icon: const Icon(Icons.refresh, size: 20),
           color: const Color(0xFF89B4FA),
@@ -219,6 +226,56 @@ class RunStateIndicator extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PauseResumeButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final vmStatus = ref.watch(vmServiceStatusProvider).value ??
+        VMServiceStatus.disconnected;
+    final vmManager = ref.watch(vmServiceManagerProvider);
+
+    if (vmStatus == VMServiceStatus.disconnected ||
+        vmStatus == VMServiceStatus.connecting) {
+      return const SizedBox.shrink();
+    }
+
+    final isPaused = vmStatus == VMServiceStatus.paused;
+
+    return _ControlButton(
+      icon: isPaused ? Icons.play_arrow : Icons.pause,
+      label: isPaused ? 'Resume' : 'Pause',
+      color: const Color(0xFFA6E3A1), // Green
+      onPressed: () => isPaused ? vmManager.resume() : vmManager.pause(),
+      shortcut: isPaused ? 'F5' : 'F6',
+    );
+  }
+}
+
+class InlinePauseResumeButton extends ConsumerWidget {
+  const InlinePauseResumeButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final vmStatus = ref.watch(vmServiceStatusProvider).value ??
+        VMServiceStatus.disconnected;
+    final vmManager = ref.watch(vmServiceManagerProvider);
+
+    if (vmStatus == VMServiceStatus.disconnected ||
+        vmStatus == VMServiceStatus.connecting) {
+      return const SizedBox.shrink();
+    }
+
+    final isPaused = vmStatus == VMServiceStatus.paused;
+
+    return IconButton(
+      icon: Icon(isPaused ? Icons.play_arrow : Icons.pause, size: 20),
+      color: const Color(0xFFA6E3A1),
+      tooltip: isPaused ? 'Resume' : 'Pause',
+      onPressed: () => isPaused ? vmManager.resume() : vmManager.pause(),
+      visualDensity: VisualDensity.compact,
     );
   }
 }

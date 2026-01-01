@@ -99,12 +99,24 @@ class TermuxBridge {
     }
   }
 
-  /// 開啟 Termux 終端機
+  /// 開啟 Termux 應用程式
   Future<bool> openTermux() async {
     try {
       final result = await _channel.invokeMethod<bool>('openTermux');
       return result ?? false;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      print('Failed to open Termux: ${e.message}');
+      return false;
+    }
+  }
+
+  /// 開啟 Termux 的 "顯示在其他應用程式上層" 設定頁面
+  Future<bool> openTermuxSettings() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('openTermuxSettings');
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to open Termux settings: ${e.message}');
       return false;
     }
   }
@@ -112,34 +124,24 @@ class TermuxBridge {
   /// 自動設定 Termux SSH 環境 (Auto-Bootstrap)
   ///
   /// 執行: pkg update && pkg install openssh && passwd -d && sshd
-  /// 注意：這裡為了無人值守，暫時嘗試移除密碼 (passwd -d) 或設定預設密碼。
-  /// 考慮安全性，理想狀況是我們 generate key 然後塞進去，但需要寫檔案權限。
-  /// MVP 策略：設定 user 密碼為 'termux' (如果能透過這樣設定的話)
-  /// 或者，我們只安裝 sshd，讓使用者第一次自己去 termux 設定密碼 (如果不行的話)。
+  /// 注意：這裡為了無人值守，使用 chpasswd 設定預設密碼。
+  /// chpasswd 可以透過 stdin 設定密碼，不需要 TTY。
   ///
-  /// 改進策略：
-  /// 發送指令安裝 openssh 並啟動 sshd。
-  /// sshd 預設可能需要密碼。
-  /// 我們嘗試使用 `passwd` 指令設定密碼？ `echo "termux\ntermux" | passwd`
+  /// MVP 策略：設定 user 密碼為 'termux'
   Future<TermuxResult> setupTermuxSSH() {
     // 1. Acquire WakeLock
-    // 2. Install OpenSSH
-    // 3. Set password to 'termux' (MVP automation)
+    // 2. Install OpenSSH if not present
+    // 3. Set password using chpasswd (works without TTY)
     // 4. Start SSHD
-    // 5. Echo success
-    // Note: The above string has nested quotes logic which might be tricky.
-    // Let's simplify: Single quotes for Dart string, Double for sh -c.
-    // Inside double quotes, we need to escape things if needed.
-    // `echo "termux\ntermux" | passwd`
-
-    // Improved version:
-    // sh -c "termux-wake-lock && pkg update -y && pkg install openssh -y && echo -e 'termux\ntermux' | passwd && sshd"
-
-    // Dart String:
-    // Optimized: Export PATH ensuring access to binaries even on cold start.
-    // NOTE: Do NOT use 'sh -c' here, executeCommand already wraps with sh -c.
-    const cmd =
-        'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; termux-wake-lock; sshd || (pkg update -y && pkg install openssh -y && ssh-keygen -A && sshd)';
+    //
+    // chpasswd reads username:password from stdin
+    // We get the current username from whoami
+    const cmd = 'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; '
+        'termux-wake-lock; '
+        'pkg install -y openssh busybox termux-auth > /dev/null 2>&1 || true; '
+        'ssh-keygen -A 2>/dev/null || true; '
+        'USER=\$(whoami); echo "\$USER:termux" | busybox chpasswd 2>/dev/null || echo "\$USER:termux" | chpasswd 2>/dev/null || true; '
+        'sshd 2>/dev/null || pkill sshd; sleep 1; sshd';
     return executeCommand(cmd, background: false);
   }
 

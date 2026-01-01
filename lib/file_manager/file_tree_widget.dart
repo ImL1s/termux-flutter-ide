@@ -824,6 +824,7 @@ class _DirectoryBrowserState extends ConsumerState<DirectoryBrowser> {
                           itemBuilder: (context, index) {
                             final item = _items![index];
                             return ListTile(
+                              key: Key('folder_item_${item.name}'),
                               leading: const Icon(Icons.folder,
                                   color: AppTheme.syntaxType),
                               title: Text(item.name),
@@ -845,6 +846,7 @@ class _DirectoryBrowserState extends ConsumerState<DirectoryBrowser> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
+                  key: const Key('directory_browser_cancel'),
                   child: const Text('Cancel'),
                 ),
               ),
@@ -856,6 +858,7 @@ class _DirectoryBrowserState extends ConsumerState<DirectoryBrowser> {
                     backgroundColor: AppTheme.secondary,
                     foregroundColor: Colors.black,
                   ),
+                  key: const Key('directory_browser_select'),
                   child: const Text('Select This Folder'),
                 ),
               ),

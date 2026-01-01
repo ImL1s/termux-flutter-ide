@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,50 +28,9 @@ class SSHService {
 
   SSHClient? get client => _client;
 
-  /// Initiate connection flow
+  /// Initiate connection flow with automatic retry and bootstrap
   Future<void> connect() async {
-    if (isConnected) return;
-
-    _updateStatus(SSHStatus.connecting);
-    print('SSHService: Initiating connection...');
-
-    try {
-      await _attemptConnection().timeout(const Duration(seconds: 5));
-      _updateStatus(SSHStatus.connected);
-      print('SSHService: Connected successfully on first try');
-    } catch (e) {
-      print(
-          'SSHService: Initial connection failed ($e). Starting bootstrap...');
-      _updateStatus(SSHStatus.bootstrapping);
-
-      // Auto-Bootstrap: First, wake up Termux by opening its main activity
-      try {
-        print('SSHService: Opening Termux to wake it up...');
-        await _bridge.openTermux();
-
-        // Wait for Termux to fully start
-        await Future.delayed(const Duration(seconds: 3));
-
-        // Now send the SSH setup command
-        print('SSHService: Sending SSH setup command...');
-        await _bridge.setupTermuxSSH();
-
-        // Wait for SSHD to start
-        print('SSHService: Waiting for SSHD...');
-        await Future.delayed(const Duration(seconds: 8));
-
-        // Retry
-        print('SSHService: Retrying connection...');
-        await _attemptConnection().timeout(const Duration(seconds: 10));
-        _updateStatus(SSHStatus.connected);
-        print('SSHService: Connected successfully after bootstrap');
-      } catch (e2) {
-        print('SSHService: Connection/Bootstrap failed: $e2');
-        _updateStatus(SSHStatus.failed);
-        // Do not rethrow here to prevent app crash at startup.
-        // The UI should handle the failed status.
-      }
-    }
+    await connectWithRetry(maxRetries: 3);
   }
 
   Future<void> _attemptConnection() async {
@@ -85,6 +46,68 @@ class SSHService {
     );
 
     await _client!.authenticated;
+  }
+
+  /// Ensure Termux SSH environment is bootstrapped (password set, sshd running)
+  /// Returns true if bootstrap was triggered
+  Future<bool> ensureBootstrapped() async {
+    print('SSHService: Ensuring Termux SSH is bootstrapped...');
+    _updateStatus(SSHStatus.bootstrapping);
+
+    try {
+      // Step 1: Wake up Termux
+      print('SSHService: [Bootstrap] Opening Termux...');
+      await _bridge.openTermux();
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Step 2: Setup SSH (install openssh, set password, start sshd)
+      print('SSHService: [Bootstrap] Setting up SSH environment...');
+      final result = await _bridge.setupTermuxSSH();
+      print(
+          'SSHService: [Bootstrap] Setup result: ${result.success ? "OK" : result.stderr}');
+
+      // Step 3: Wait for chpasswd and SSHD to be ready
+      // Intent execution is asynchronous, so we need a longer wait
+      print(
+          'SSHService: [Bootstrap] Waiting for password setup and sshd (12s)...');
+      await Future.delayed(const Duration(seconds: 12));
+
+      return true;
+    } catch (e) {
+      print('SSHService: [Bootstrap] Failed: $e');
+      return false;
+    }
+  }
+
+  /// Connect with automatic retry and bootstrap
+  Future<void> connectWithRetry({int maxRetries = 3}) async {
+    if (isConnected) return;
+
+    _updateStatus(SSHStatus.connecting);
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        print('SSHService: Connection attempt $attempt/$maxRetries...');
+        await _attemptConnection().timeout(const Duration(seconds: 8));
+        _updateStatus(SSHStatus.connected);
+        print('SSHService: Connected on attempt $attempt');
+        return;
+      } catch (e) {
+        print('SSHService: Attempt $attempt failed: $e');
+
+        if (attempt == 1) {
+          // First failure: trigger bootstrap
+          await ensureBootstrapped();
+        } else if (attempt < maxRetries) {
+          // Subsequent failures: just wait and retry
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      }
+    }
+
+    // All retries exhausted
+    _updateStatus(SSHStatus.failed);
+    print('SSHService: All connection attempts failed.');
   }
 
   /// Execute a command and return output (stdout + stderr)
@@ -174,6 +197,39 @@ class SSHService {
       stdout: utf8.decode(stdoutBytes, allowMalformed: true),
       stderr: utf8.decode(stderrBytes, allowMalformed: true),
     );
+  }
+
+  /// Forward a local port to a remote port on the SSH host.
+  /// If localPort is 0, the OS will pick an available port.
+  /// Returns the actual local port used.
+  Future<int> forwardLocal(int remotePort,
+      {String remoteHost = '127.0.0.1'}) async {
+    if (!isConnected) throw Exception("SSH not connected");
+
+    final server = await ServerSocket.bind('127.0.0.1', 0);
+
+    server.listen((socket) async {
+      try {
+        final channel = await _client!.forwardLocal(remoteHost, remotePort);
+
+        socket.listen(
+          (data) => channel.sink.add(Uint8List.fromList(data)),
+          onDone: () => channel.sink.close(),
+          onError: (_) => channel.sink.close(),
+        );
+
+        channel.stream.listen(
+          (data) => socket.add(data),
+          onDone: () => socket.close(),
+          onError: (_) => socket.close(),
+        );
+      } catch (e) {
+        print('SSHService: Forwarding failed: $e');
+        socket.close();
+      }
+    });
+
+    return server.port;
   }
 
   void _updateStatus(SSHStatus status) {

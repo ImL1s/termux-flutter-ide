@@ -5,7 +5,7 @@ import '../ai/ai_providers.dart';
 import '../theme/app_theme.dart';
 import 'command_palette.dart';
 
-enum ActivityItem { explorer, search, sourceControl, extensions, none }
+enum ActivityItem { explorer, search, sourceControl, debug, extensions, none }
 
 /// Selected Activity Item Notifier
 class SelectedActivityNotifier extends Notifier<ActivityItem> {
@@ -28,8 +28,8 @@ class SelectedActivityNotifier extends Notifier<ActivityItem> {
 /// Selected Activity Item Provider (Left Sidebar)
 final selectedActivityProvider =
     NotifierProvider<SelectedActivityNotifier, ActivityItem>(
-      SelectedActivityNotifier.new,
-    );
+  SelectedActivityNotifier.new,
+);
 
 class ActivityBar extends ConsumerWidget {
   const ActivityBar({super.key});
@@ -74,6 +74,16 @@ class ActivityBar extends ConsumerWidget {
             onTap: () => ref
                 .read(selectedActivityProvider.notifier)
                 .toggle(ActivityItem.sourceControl),
+          ),
+          _buildActivityIcon(
+            context,
+            ref,
+            icon: Icons.bug_report_outlined,
+            tooltip: 'Run and Debug',
+            isSelected: selected == ActivityItem.debug,
+            onTap: () => ref
+                .read(selectedActivityProvider.notifier)
+                .toggle(ActivityItem.debug),
           ),
           const SizedBox(height: 16),
           _buildActivityIcon(

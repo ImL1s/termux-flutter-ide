@@ -14,6 +14,7 @@ import '../ai/ai_providers.dart';
 import '../search/search_widget.dart';
 import 'activity_bar.dart';
 import 'command_palette.dart';
+import 'debug_panel_widget.dart';
 import 'package:flutter/services.dart'; // For LogicalKeyboardKey
 import '../git/git_widget.dart';
 import 'editor_providers.dart';
@@ -21,7 +22,8 @@ import '../settings/settings_page.dart';
 import '../git/git_clone_dialog.dart';
 import '../core/providers.dart';
 import '../run/flutter_runner_widget.dart';
-import '../run/flutter_runner_service.dart';
+import '../run/vm_service_manager.dart'; // Import for VMServiceStatus and provider
+import '../run/flutter_runner_service.dart'; // Import for flutterRunnerServiceProvider
 import 'flutter_create_dialog.dart';
 
 class EditorPage extends ConsumerStatefulWidget {
@@ -266,12 +268,14 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         leading: Builder(
           builder: (context) => IconButton(
             icon: const Icon(Icons.menu),
+            key: const Key('main_drawer_button'),
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.play_arrow, color: Color(0xFFCBA6F7)),
+            key: const Key('appbar_run_action'),
             onPressed: _runFlutter,
           ),
           IconButton(
@@ -287,11 +291,11 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         ],
       ),
       drawer: _buildMobileDrawer(),
-      body: Column(
+      body: const Column(
         children: [
-          const FileTabsWidget(),
-          const Divider(height: 1),
-          const Expanded(child: CodeEditorWidget()),
+          FileTabsWidget(),
+          Divider(height: 1),
+          Expanded(child: CodeEditorWidget()),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -300,14 +304,41 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
         items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.folder), label: 'Explorer'),
           BottomNavigationBarItem(
               icon: Icon(Icons.terminal), label: 'Terminal'),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
         ],
         onTap: (index) {
-          if (index == 0) _showTerminalMobile();
-          if (index == 1) _showSearchMobile();
+          if (index == 0) _showExplorerMobile();
+          if (index == 1) _showTerminalMobile();
+          if (index == 2) _showSearchMobile();
         },
+      ),
+      floatingActionButton: Consumer(
+        builder: (context, ref, _) {
+          final vmStatus = ref.watch(vmServiceStatusProvider);
+          final status = vmStatus.asData?.value ?? VMServiceStatus.disconnected;
+          // Show if connected or paused
+          if (status == VMServiceStatus.connected ||
+              status == VMServiceStatus.paused) {
+            return const FloatingDebugToolbar();
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  void _showExplorerMobile() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E2E),
+      isScrollControlled: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: const FileTreeWidget(),
       ),
     );
   }
@@ -373,8 +404,29 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('Run and Debug'),
+            onTap: () {
+              final container = ProviderScope.containerOf(context);
+              Navigator.pop(context);
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: const Color(0xFF1E1E2E),
+                isScrollControlled: true,
+                builder: (context) => UncontrolledProviderScope(
+                  container: container,
+                  child: SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    child: const DebugPanelWidget(),
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.folder_open),
             title: const Text('Open Folder'),
+            key: const Key('drawer_open_folder'),
             onTap: () {
               Navigator.pop(context);
               showModalBottomSheet(
@@ -427,6 +479,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           ListTile(
             leading: const Icon(Icons.play_arrow),
             title: const Text('Run Project'),
+            key: const Key('drawer_run_project'),
             onTap: () {
               Navigator.pop(context);
 
@@ -642,6 +695,8 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         return const SearchWidget();
       case ActivityItem.sourceControl:
         return const GitWidget();
+      case ActivityItem.debug:
+        return const DebugPanelWidget();
       default:
         return const SizedBox.shrink();
     }

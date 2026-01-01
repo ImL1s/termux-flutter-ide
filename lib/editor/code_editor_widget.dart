@@ -23,6 +23,7 @@ import '../core/snackbar_service.dart';
 import 'coding_toolbar.dart';
 import 'editor_request_provider.dart'; // Import Request Provider
 import 'completion/completion_service.dart';
+import 'package:termux_flutter_ide/run/breakpoint_service.dart';
 
 class CodeEditorWidget extends ConsumerStatefulWidget {
   const CodeEditorWidget({super.key});
@@ -181,15 +182,31 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
             color: const Color(0xFF1E1E2E),
             child: CodeTheme(
               data: CodeThemeData(styles: _getThemeStyles(editorTheme)),
-              child: SingleChildScrollView(
-                child: CodeField(
-                  focusNode: _focusNode,
-                  controller: _controller!,
-                  textStyle: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: fontSize,
+              child: Stack(
+                children: [
+                  SingleChildScrollView(
+                    child: CodeField(
+                      focusNode: _focusNode,
+                      controller: _controller!,
+                      textStyle: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: fontSize,
+                      ),
+                    ),
                   ),
-                ),
+                  // Breakpoint Interaction Layer
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 45, // Match gutterWidth in _BreakpointLayer
+                    child: _BreakpointLayer(
+                      controller: _controller!,
+                      fontSize: fontSize,
+                      filePath: _currentFilePath!,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -381,5 +398,168 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
     // However, focusing and setting selection usually brings it into view.
     // For better scrolling, we might need Scrollable.ensureVisible or similar if we had keys.
     // But let's rely on selection behavior for now.
+  }
+}
+
+class _BreakpointLayer extends ConsumerWidget {
+  final CodeController controller;
+  final double fontSize;
+  final String filePath;
+
+  const _BreakpointLayer({
+    required this.controller,
+    required this.fontSize,
+    required this.filePath,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final breakpoints = ref.watch(breakpointsProvider).getByPath(filePath);
+
+    // Line height is usually around 1.4 * fontSize depending on the font
+    final lineHeight = fontSize * 1.5; // Heuristic for JetBrains Mono
+    // Gutter width in flutter_code_editor is usually dynamic.
+    // Let's assume a safe area for clicking (first 40-50 pixels)
+    const gutterWidth = 45.0;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapUp: (details) {
+        if (details.localPosition.dx <= gutterWidth) {
+          final effectiveTapY = details.localPosition.dy +
+              (Scrollable.maybeOf(context)?.position.pixels ?? 0);
+          final line = (effectiveTapY / lineHeight).floor() + 1;
+
+          ref
+              .read(breakpointsProvider.notifier)
+              .toggleBreakpoint(filePath, line);
+        }
+      },
+      onLongPressStart: (details) async {
+        if (details.localPosition.dx <= gutterWidth) {
+          final effectiveTapY = details.localPosition.dy +
+              (Scrollable.maybeOf(context)?.position.pixels ?? 0);
+          final line = (effectiveTapY / lineHeight).floor() + 1;
+
+          final controller = TextEditingController();
+          final currentBp =
+              ref.read(breakpointsProvider).breakpoints.firstWhere(
+                    (b) => b.path == filePath && b.line == line,
+                    orElse: () => Breakpoint(path: filePath, line: line),
+                  );
+
+          if (currentBp.condition != null) {
+            controller.text = currentBp.condition!;
+          }
+
+          final condition = await showDialog<String>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text('Edit Breakpoint at Line $line'),
+              content: TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: 'Condition (optional)',
+                  hintText: 'e.g. i > 5',
+                ),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel')),
+                TextButton(
+                    onPressed: () => Navigator.pop(context, controller.text),
+                    child: const Text('Save')),
+              ],
+            ),
+          );
+
+          if (condition != null) {
+            // Update breakpoint with condition (or remove condition if empty string?)
+            // If empty string, maybe treat as null?
+            final finalCondition = condition.trim().isEmpty ? null : condition;
+
+            // Note: toggleBreakpoint logic toggles if exists.
+            // If we are editing, we probably want to FORCE set or update.
+            // But our notifier only has toggle.
+            // Let's modify toggle logic: if it exists, remove it first?
+            // Or better, just call toggle to add/update if we pass condition.
+
+            // If it already exists, toggle removes it.
+            // We should probably check existence.
+            final exists = ref
+                .read(breakpointsProvider)
+                .breakpoints
+                .any((b) => b.path == filePath && b.line == line);
+
+            if (exists) {
+              // Remove old one first
+              ref
+                  .read(breakpointsProvider.notifier)
+                  .toggleBreakpoint(filePath, line);
+            }
+            // Add new one with condition
+            ref
+                .read(breakpointsProvider.notifier)
+                .toggleBreakpoint(filePath, line, condition: finalCondition);
+          }
+        }
+      },
+      child: SizedBox.expand(
+        child: CustomPaint(
+          painter: _BreakpointPainter(
+            breakpoints: breakpoints,
+            lineHeight: lineHeight,
+            gutterWidth: gutterWidth,
+            scrollOffset: Scrollable.maybeOf(context)?.position.pixels ?? 0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BreakpointPainter extends CustomPainter {
+  final List<Breakpoint> breakpoints;
+  final double lineHeight;
+  final double gutterWidth;
+  final double scrollOffset;
+
+  _BreakpointPainter({
+    required this.breakpoints,
+    required this.lineHeight,
+    required this.gutterWidth,
+    required this.scrollOffset,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.red.withValues(alpha: 0.8)
+      ..style = PaintingStyle.fill;
+
+    for (final bp in breakpoints) {
+      final y = (bp.line - 1) * lineHeight - scrollOffset + (lineHeight / 2);
+
+      // Only draw if within visible vertical area
+      if (y >= -lineHeight && y <= size.height + lineHeight) {
+        paint.color = (bp.condition != null && bp.condition!.isNotEmpty)
+            ? Colors.orange.withValues(alpha: 0.8)
+            : Colors.red.withValues(alpha: 0.8);
+
+        canvas.drawCircle(
+          Offset(gutterWidth / 2 - 8, y), // Offset slightly to the left
+          6,
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BreakpointPainter oldDelegate) {
+    return oldDelegate.breakpoints != breakpoints ||
+        oldDelegate.scrollOffset != scrollOffset ||
+        oldDelegate.lineHeight != lineHeight;
   }
 }

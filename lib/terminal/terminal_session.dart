@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,6 +28,10 @@ class TerminalSession {
   String? _filter;
   String _partialLine = '';
   final List<String> _pendingCommands = [];
+
+  // Data stream for log interception
+  final _dataController = StreamController<String>.broadcast();
+  Stream<String> get dataStream => _dataController.stream;
 
   void write(String data) {
     if (state == SessionState.connected && shell != null) {
@@ -113,6 +118,9 @@ class TerminalSession {
     // For now, if we are filtering, we only update based on lines.
     // Real-time filtering of partial lines is complex.
     _refreshTerminal();
+
+    // Notify listeners
+    _dataController.add(data);
   }
 
   TerminalSession({
@@ -128,6 +136,7 @@ class TerminalSession {
     client?.close();
     client = null;
     state = SessionState.disconnected;
+    _dataController.close();
   }
 }
 

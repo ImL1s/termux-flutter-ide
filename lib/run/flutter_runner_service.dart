@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:device_apps/device_apps.dart';
+import 'package:installed_apps/installed_apps.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart'; // Import Flag
-import 'package:url_launcher/url_launcher.dart'; // For opening download link
 import 'launch_config.dart';
+import 'runner_actions.dart'; // Import RunnerAction
 import '../terminal/terminal_session.dart';
+import '../termux/ssh_service.dart';
+import 'vm_service_manager.dart';
 import '../core/providers.dart';
 import '../file_manager/file_operations.dart';
 
@@ -173,6 +176,9 @@ class FlutterRunnerService {
       // Listen for session end
       _listenForSessionEnd(session);
 
+      // Listen for VM Service URI
+      _setupVMServiceInterception(session);
+
       final cmdBuffer = StringBuffer();
 
       // Check if targeting Linux (explicitly or implicitly) and add X11 setup
@@ -185,9 +191,9 @@ class FlutterRunnerService {
       if (isExplicitLinux || config.deviceId == null) {
         // X11 Detection & Auto-Launch
         final isX11Installed =
-            await DeviceApps.isAppInstalled('com.termux.x11');
+            await InstalledApps.isAppInstalled('com.termux.x11');
 
-        if (!isX11Installed) {
+        if (isX11Installed != true) {
           session.onDataReceived(
               '\x1B[31m[IDE] ❌ Termux:X11 APP is NOT installed.\x1B[0m\r\n');
           session.onDataReceived(
@@ -197,9 +203,10 @@ class FlutterRunnerService {
 
           stateNotifier.setState(RunnerState.error);
           errorNotifier.setError('請先安裝 Termux:X11 APP 以顯示畫面');
-          await launchUrl(
-              Uri.parse('https://github.com/termux/termux-x11/releases'),
-              mode: LaunchMode.externalApplication);
+          // Dispatch action to UI
+          _ref
+              .read(runnerActionProvider.notifier)
+              .setAction(const RunnerAction(RunnerActionType.missingX11));
           return;
         } else {
           session.onDataReceived(
@@ -320,6 +327,48 @@ class FlutterRunnerService {
     if (session.shell != null) {
       session.shell!.write(Uint8List.fromList(utf8.encode('$command\r\n')));
     }
+  }
+
+  void _setupVMServiceInterception(TerminalSession session) {
+    StreamSubscription? sub;
+    sub = session.dataStream.listen((data) async {
+      // Regex to find: The Dart VM service is listening on ws://127.0.0.1:40613/EitFp5hEAs4=/ws
+      final regExp = RegExp(
+          r'The Dart VM service is listening on (ws://127\.0\.0\.1:(\d+)/[^/]+/ws)');
+      final match = regExp.firstMatch(data);
+
+      if (match != null) {
+        final remoteUriStr = match.group(1)!;
+        final remotePort = int.parse(match.group(2)!);
+
+        session.onDataReceived(
+            '\x1B[1;36m[IDE] 🔍 Detected VM Service on remote port $remotePort\x1B[0m\r\n');
+
+        try {
+          // 1. Setup SSH Tunnel
+          final sshService = _ref.read(sshServiceProvider);
+          final localPort = await sshService.forwardLocal(remotePort);
+
+          final localWsUri = remoteUriStr.replaceFirst(
+              '127.0.0.1:$remotePort', '127.0.0.1:$localPort');
+          session.onDataReceived(
+              '\x1B[1;36m[IDE] 🚀 SSH Tunnel established: $localWsUri\x1B[0m\r\n');
+
+          // 2. Connect VMServiceManager
+          final vmManager = _ref.read(vmServiceManagerProvider);
+          await vmManager.connect(localWsUri);
+
+          session.onDataReceived(
+              '\x1B[1;32m[IDE] ✔ Debugger Connected!\x1B[0m\r\n');
+
+          // We can stop listening once connected
+          sub?.cancel();
+        } catch (e) {
+          session.onDataReceived(
+              '\x1B[31m[IDE] ❌ Failed to setup debugger: $e\x1B[0m\r\n');
+        }
+      }
+    });
   }
 
   TerminalSession? get currentSession {

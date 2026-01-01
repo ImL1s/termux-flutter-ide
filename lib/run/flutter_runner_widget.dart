@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart';
 import 'launch_config.dart';
 import 'flutter_runner_service.dart';
+import 'runner_actions.dart';
+import 'x11_missing_dialog.dart';
 import '../terminal/terminal_session.dart';
 import '../core/providers.dart';
 import '../file_manager/file_operations.dart';
+import '../termux/ssh_error_dialog.dart';
 
 // VS Code Dark+ Theme Colors
 class VSCodeTerminalTheme {
@@ -48,10 +51,50 @@ class FlutterRunnerWidget extends ConsumerWidget {
     final runnerState = ref.watch(runnerStateProvider);
     final runnerError = ref.watch(runnerErrorProvider);
 
-    final activeSession = sessionsState.sessions.cast<TerminalSession?>().firstWhere(
-          (s) => s?.id == activeSessionId,
-          orElse: () => null,
+    // Listen for actions from Service
+    ref.listen(runnerActionProvider, (previous, next) {
+      print('FlutterRunnerWidget: Action received: ${next?.type}');
+      if (next != null) {
+        if (next.type == RunnerActionType.missingX11) {
+          print('FlutterRunnerWidget: Showing Dialog...');
+          showDialog(
+            context: context,
+            builder: (context) => const X11MissingDialog(),
+          );
+        }
+        // Consume action
+        ref.read(runnerActionProvider.notifier).setAction(null);
+      }
+    });
+
+    // Listen for SSH authentication errors to show helpful dialog
+    ref.listen(runnerErrorProvider, (previous, next) {
+      if (next != null &&
+          next.contains('SSH') &&
+          (next.contains('認證') ||
+              next.contains('連線失敗') ||
+              next.contains('auth'))) {
+        // Show SSH error dialog with fix instructions
+        showSSHErrorDialog(
+          context,
+          errorMessage: next,
+          onRetry: () {
+            // Clear error and retry connection
+            ref.read(runnerErrorProvider.notifier).setError(null);
+            final selectedConfig = ref.read(selectedLaunchConfigProvider);
+            if (selectedConfig != null) {
+              ref.read(flutterRunnerServiceProvider).run(selectedConfig);
+            }
+          },
         );
+      }
+    });
+
+    final activeSession =
+        sessionsState.sessions.cast<TerminalSession?>().firstWhere(
+              (s) => s?.id == activeSessionId,
+              orElse: () => null,
+            );
 
     return Column(
       children: [
@@ -159,7 +202,8 @@ class FlutterRunnerWidget extends ConsumerWidget {
                             .createDirectory('$projectPath/.termux-ide');
                         await fileOps.writeFile(
                             configPath, defaultLaunchJsonTemplate);
-                        // Force refresh providers
+                        // Force refresh providers (result intentionally ignored)
+                        // ignore: unused_result
                         ref.refresh(launchConfigurationsProvider);
                       }
 
@@ -250,6 +294,7 @@ class FlutterRunnerWidget extends ConsumerWidget {
                         }
                       : null,
                   tooltip: 'Run',
+                  key: const Key('run_app_button'),
                 )
               else if (runnerState == RunnerState.connecting)
                 const SizedBox(
@@ -356,49 +401,51 @@ class FlutterRunnerWidget extends ConsumerWidget {
             ],
           ),
         ),
-                // Terminal View
-                Expanded(
-                  child: activeSession != null
-                      ? TerminalView(
-                          activeSession.terminal,
-                          controller: activeSession.controller,
-                          theme: VSCodeTerminalTheme.theme,
-                          textStyle: const TerminalStyle(fontSize: 12),
-                        )
-                      : Center(
-                          child: InkWell(
-                            onTap: selectedConfig != null
-                                ? () {
-                                    ref
-                                        .read(flutterRunnerServiceProvider)
-                                        .run(selectedConfig);
-                                  }
-                                : null,
-                            borderRadius: BorderRadius.circular(16),
-                            child: Padding(
-                              padding: const EdgeInsets.all(32.0),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.play_circle_outline,
-                                      size: 48,
-                                      color: selectedConfig != null
-                                          ? Colors.green.withOpacity(0.8)
-                                          : Colors.white24),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    selectedConfig != null
-                                        ? 'Run ${selectedConfig.name}'
-                                        : 'Select a configuration and press Run',
-                                    style: const TextStyle(color: Colors.white54),
-                                  ),
-                                ],
-                              ),
-                            ),
+        // Terminal View
+        Expanded(
+          child: activeSession != null
+              ? TerminalView(
+                  activeSession.terminal,
+                  key: const Key('runner_terminal_view'),
+                  controller: activeSession.controller,
+                  theme: VSCodeTerminalTheme.theme,
+                  textStyle: const TerminalStyle(fontSize: 12),
+                )
+              : Center(
+                  child: InkWell(
+                    onTap: selectedConfig != null
+                        ? () {
+                            ref
+                                .read(flutterRunnerServiceProvider)
+                                .run(selectedConfig);
+                          }
+                        : null,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.play_circle_outline,
+                              key: const Key('run_app_center_button'),
+                              size: 48,
+                              color: selectedConfig != null
+                                  ? Colors.green.withOpacity(0.8)
+                                  : Colors.white24),
+                          const SizedBox(height: 16),
+                          Text(
+                            selectedConfig != null
+                                ? 'Run ${selectedConfig.name}'
+                                : 'Select a configuration and press Run',
+                            style: const TextStyle(color: Colors.white54),
                           ),
-                        ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
+        ),
       ],
     );
   }

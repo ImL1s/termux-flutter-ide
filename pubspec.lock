@@ -233,14 +233,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.4"
-  device_apps:
-    dependency: "direct main"
-    description:
-      name: device_apps
-      sha256: e84dc74d55749993fd671148cc0bd53096e1be0c268fc364285511b1d8a4c19b
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.2.0"
   equatable:
     dependency: transitive
     description:
@@ -434,6 +426,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
+  installed_apps:
+    dependency: "direct main"
+    description:
+      name: installed_apps
+      sha256: dd2b7c531f91114cd6df447c56567593c9799ca83f057137ae719324ae0afd06
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.6.0"
   integration_test:
     dependency: "direct dev"
     description: flutter
@@ -1037,13 +1037,13 @@ packages:
     source: hosted
     version: "2.2.0"
   vm_service:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: vm_service
-      sha256: ddfa8d30d89985b96407efce8acbdd124701f96741f2d981ca860662f1c0dc02
+      sha256: "0968250880a6c5fe7edc067ed0a13d4bae1577fe2771dcf3010d52c4a9d3ca14"
       url: "https://pub.dev"
     source: hosted
-    version: "15.0.0"
+    version: "14.3.1"
   watcher:
     dependency: transitive
     description:

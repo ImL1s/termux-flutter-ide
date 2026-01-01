@@ -48,6 +48,9 @@ class MainActivity : FlutterActivity() {
                 "openTermux" -> {
                     result.success(openTermux())
                 }
+                "openTermuxSettings" -> {
+                    result.success(openTermuxSettings())
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -153,6 +156,31 @@ class MainActivity : FlutterActivity() {
             }
         } catch (e: Exception) {
             false
+        }
+    }
+
+    private fun openTermuxSettings(): Boolean {
+        return try {
+            // ACTION_MANAGE_OVERLAY_PERMISSION
+            val intent = Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                data = android.net.Uri.parse("package:$TERMUX_PACKAGE")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to open overlay settings", e)
+            try {
+                // Fallback to generic settings if overlay specific fails
+                 val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.parse("package:$TERMUX_PACKAGE")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
+                true
+            } catch (ex: Exception) {
+                false
+            }
         }
     }
 }
