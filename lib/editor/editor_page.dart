@@ -26,6 +26,15 @@ import '../run/vm_service_manager.dart';
 import '../run/flutter_runner_service.dart';
 import 'flutter_create_dialog.dart';
 import 'package_search_dialog.dart';
+import 'problems_view.dart';
+import 'diagnostics_provider.dart';
+import '../services/lsp_service.dart';
+import 'editor_request_provider.dart';
+
+enum BottomPanelTab { terminal, problems }
+
+final bottomPanelTabProvider =
+    StateProvider<BottomPanelTab>((ref) => BottomPanelTab.terminal);
 
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key});
@@ -122,6 +131,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         category: 'Flutter',
         icon: Icons.library_add,
         action: () => showPackageSearchDialog(context),
+      ),
+    );
+
+    registry.register(
+      Command(
+        id: 'editor.goToDefinition',
+        title: 'Go to Definition',
+        category: 'Editor',
+        icon: Icons.search,
+        action: _goToDefinition,
       ),
     );
   }
@@ -638,36 +657,42 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                       child: Column(
                         children: [
                           Container(
-                            height: 32,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            height: 35,
                             color: const Color(0xFF181825),
                             child: Row(
                               children: [
-                                const Text(
-                                  'TERMINAL',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                                _buildBottomTab(
+                                    ref, BottomPanelTab.terminal, 'TERMINAL'),
+                                _buildBottomTab(
+                                    ref, BottomPanelTab.problems, 'PROBLEMS'),
                                 const Spacer(),
                                 IconButton(
                                   icon: const Icon(Icons.keyboard_arrow_down,
                                       size: 16),
                                   onPressed: () =>
                                       setState(() => _showTerminal = false),
-                                  tooltip: 'Hide Terminal',
+                                  tooltip: 'Hide Panel',
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.close, size: 16),
                                   onPressed: () =>
                                       setState(() => _showTerminal = false),
-                                  tooltip: 'Close Terminal',
+                                  tooltip: 'Close Panel',
                                 ),
                               ],
                             ),
                           ),
-                          const Expanded(child: TerminalWidget()),
+                          Expanded(
+                            child: Consumer(
+                              builder: (context, ref, _) {
+                                final activeTab =
+                                    ref.watch(bottomPanelTabProvider);
+                                return activeTab == BottomPanelTab.terminal
+                                    ? const TerminalWidget()
+                                    : const ProblemsView();
+                              },
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -762,5 +787,85 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         const SnackBar(content: Text('正在準備專案環境...')),
       );
     }
+  }
+
+  void _goToDefinition() async {
+    final currentFile = ref.read(currentFileProvider);
+    final position = ref.read(cursorPositionProvider);
+    if (currentFile == null || position == null) return;
+
+    final lsp = ref.read(lspServiceProvider);
+    final location =
+        await lsp.getDefinition(currentFile, position.line, position.column);
+
+    if (location != null) {
+      final uri = location['uri'] as String;
+      final range = location['range'] as Map<String, dynamic>;
+      final start = range['start'] as Map<String, dynamic>;
+      final line = start['line'] as int;
+
+      final filePath = uri.replaceAll('file://', '');
+      ref.read(editorRequestProvider.notifier).jumpToLine(filePath, line + 1);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No definition found')),
+      );
+    }
+  }
+
+  Widget _buildBottomTab(WidgetRef ref, BottomPanelTab tab, String label) {
+    final activeTab = ref.watch(bottomPanelTabProvider);
+    final isActive = activeTab == tab;
+
+    return InkWell(
+      onTap: () => ref.read(bottomPanelTabProvider.notifier).state = tab,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isActive ? const Color(0xFFCBA6F7) : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isActive ? Colors.white : Colors.grey,
+              ),
+            ),
+            if (tab == BottomPanelTab.problems) ...[
+              const SizedBox(width: 4),
+              Consumer(
+                builder: (context, ref, _) {
+                  final count =
+                      ref.watch(diagnosticsProvider).allDiagnostics.length;
+                  if (count == 0) return const SizedBox.shrink();
+                  return Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF313244),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: const TextStyle(fontSize: 10, color: Colors.white),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../termux/ssh_service.dart';
+import '../editor/diagnostics_provider.dart';
 
 class LspService {
   final Ref ref;
@@ -106,7 +107,26 @@ class LspService {
         _pendingRequests.remove(id);
       }
     }
+
+    // Handle notifications
+    if (json.containsKey('method')) {
+      final method = json['method'];
+      if (method == 'textDocument/publishDiagnostics') {
+        _handleDiagnostics(json['params']);
+      }
+    }
+
     _responseController.add(json);
+  }
+
+  void _handleDiagnostics(Map<String, dynamic> params) {
+    final uri = params['uri'] as String;
+    final diagnosticsJson = params['diagnostics'] as List;
+    final diagnostics = diagnosticsJson
+        .map((j) => LspDiagnostic.fromJson(j as Map<String, dynamic>))
+        .toList();
+
+    ref.read(diagnosticsProvider.notifier).updateDiagnostics(uri, diagnostics);
   }
 
   Future<Map<String, dynamic>> sendRequest(
@@ -173,6 +193,28 @@ class LspService {
     final header = 'Content-Length: ${request.length}\r\n\r\n';
     _session?.stdin.add(utf8.encode(header + request));
     return {};
+  }
+
+  Future<Map<String, dynamic>?> getDefinition(
+      String filePath, int line, int column) async {
+    final uri = 'file://$filePath';
+    final response = await sendRequest('textDocument/definition', {
+      'textDocument': {'uri': uri},
+      'position': {'line': line, 'character': column},
+    });
+
+    if (response.containsKey('result')) {
+      final result = response['result'];
+      if (result == null) return null;
+
+      // result can be Location | List<Location> | List<LocationLink>
+      if (result is List && result.isNotEmpty) {
+        return result.first as Map<String, dynamic>;
+      } else if (result is Map) {
+        return result as Map<String, dynamic>;
+      }
+    }
+    return null;
   }
 
   Future<List<Map<String, dynamic>>> getCompletions(

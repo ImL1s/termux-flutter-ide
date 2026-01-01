@@ -63,3 +63,11 @@ class SaveTriggerNotifier extends Notifier<int> {
   int build() => 0;
   void trigger() => state++;
 }
+
+class CursorPosition {
+  final int line;
+  final int column;
+  const CursorPosition(this.line, this.column);
+}
+
+final cursorPositionProvider = StateProvider<CursorPosition?>((ref) => null);

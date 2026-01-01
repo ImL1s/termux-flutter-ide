@@ -328,6 +328,10 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
       }
     }
 
+    // Update cursor position provider
+    ref.read(cursorPositionProvider.notifier).state =
+        CursorPosition(line, column);
+
     // Get current line for local prefix matching
     int lineStart = text.lastIndexOf('\n', cursor - 1);
     lineStart = lineStart == -1 ? 0 : lineStart + 1;

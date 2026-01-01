@@ -17,9 +17,10 @@ class EditorRequestNotifier extends Notifier<EditorRequest?> {
 
   void request(EditorRequest req) {
     state = req;
-    // Reset state after a short delay so the same request can be triggered again if needed
-    // or just rely on the consumer handling it immediately.
-    // Ideally, we want to pulse this.
+  }
+
+  void jumpToLine(String filePath, int lineNumber) {
+    state = JumpToLineRequest(filePath, lineNumber);
   }
 }
 

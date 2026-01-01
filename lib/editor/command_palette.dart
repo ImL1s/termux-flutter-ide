@@ -27,6 +27,10 @@ class CommandService {
     _commands[command.id] = command;
   }
 
+  void execute(String id) {
+    _commands[id]?.action();
+  }
+
   void unregister(String id) {
     _commands.remove(id);
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'completion/completion_service.dart';
+import 'command_palette.dart';
 
 class CodingToolbar extends ConsumerWidget {
   final CodeController controller;
@@ -80,11 +81,17 @@ class CodingToolbar extends ConsumerWidget {
                 if (index == 0) {
                   return _buildButton('Tab', () => _insertText('\t'));
                 }
-                if (index == _symbols.length + 1) {
+                if (index == 1) {
+                  return _buildButton('Def', () {
+                    final registry = ref.read(commandServiceProvider);
+                    registry.execute('editor.goToDefinition');
+                  });
+                }
+                if (index == _symbols.length + 2) {
                   return const SizedBox(width: 8);
                 }
 
-                final symbol = _symbols[index - 1];
+                final symbol = _symbols[index - 2];
                 return _buildButton(symbol, () => _insertText(symbol));
               },
             ),
