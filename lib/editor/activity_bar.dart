@@ -5,7 +5,15 @@ import '../ai/ai_providers.dart';
 import '../theme/app_theme.dart';
 import 'command_palette.dart';
 
-enum ActivityItem { explorer, search, sourceControl, debug, extensions, none }
+enum ActivityItem {
+  analyzer,
+  explorer,
+  search,
+  sourceControl,
+  debug,
+  extensions,
+  none
+}
 
 /// Selected Activity Item Notifier
 class SelectedActivityNotifier extends Notifier<ActivityItem> {
@@ -45,6 +53,16 @@ class ActivityBar extends ConsumerWidget {
       child: Column(
         children: [
           const SizedBox(height: 8),
+          _buildActivityIcon(
+            context,
+            ref,
+            icon: Icons.analytics_outlined,
+            tooltip: 'Project Health',
+            isSelected: selected == ActivityItem.analyzer,
+            onTap: () => ref
+                .read(selectedActivityProvider.notifier)
+                .toggle(ActivityItem.analyzer),
+          ),
           _buildActivityIcon(
             context,
             ref,

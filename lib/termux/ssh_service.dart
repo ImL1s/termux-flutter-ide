@@ -34,8 +34,26 @@ class SSHService {
   }
 
   Future<void> _attemptConnection() async {
-    final uid = await _bridge.getTermuxUid();
-    final username = uid != null ? 'u0_a${uid - 10000}' : 'u0_a251'; // Fallback
+    // Determine username robustly
+    String username = 'u0_a251'; // Default fallback
+    try {
+      // 1. Try 'whoami' via bridge (most accurate)
+      print('SSHService: Resolving Termux username...');
+      final result = await _bridge.executeCommand('whoami');
+      if (result.success && result.stdout.trim().isNotEmpty) {
+        username = result.stdout.trim();
+        print('SSHService: Resolved username -> $username');
+      } else {
+        // 2. Fallback to UID math
+        print("SSHService: 'whoami' failed, falling back to UID math...");
+        final uid = await _bridge.getTermuxUid();
+        if (uid != null) {
+          username = 'u0_a${uid - 10000}';
+        }
+      }
+    } catch (e) {
+      print('SSHService: Failed to resolve username: $e');
+    }
 
     print('SSHService: Connecting to 127.0.0.1:8022 as $username...');
     final socket = await SSHSocket.connect('127.0.0.1', 8022);

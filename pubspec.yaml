@@ -39,7 +39,8 @@ dependencies:
   xml: ^6.6.1
   yaml_edit: ^2.2.3
   riverpod_annotation: ^2.6.1
-
+  
+  # Note: Foldable device support uses Flutter's built-in DisplayFeature API
 
 dev_dependencies:
   flutter_test:

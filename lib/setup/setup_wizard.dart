@@ -338,113 +338,173 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
   }
 
   Widget _buildSSHStep(SetupState state) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          state.isSSHConnected ? Icons.link : Icons.link_off,
-          size: 64,
-          color: state.isSSHConnected
-              ? const Color(0xFFA6E3A1)
-              : const Color(0xFFF9E2AF),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          state.isSSHConnected ? 'SSH 已連線' : '尚未連線到 Termux',
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFFCDD6F4),
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (!state.isSSHConnected) ...[
-          const Text(
-            '請在 Termux App 中執行以下命令以開啟 SSH 服務：',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xFFBAC2DE)),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            state.isSSHConnected ? Icons.link : Icons.link_off,
+            size: 56,
+            color: state.isSSHConnected
+                ? const Color(0xFFA6E3A1)
+                : const Color(0xFFF9E2AF),
           ),
           const SizedBox(height: 16),
-          _buildCodeBlock('pkg install openssh -y && sshd'),
-          const SizedBox(height: 16),
-          const Text(
-            '並確認已設定密碼 (執行 passwd)',
-            style: TextStyle(color: Color(0xFFBAC2DE), fontSize: 12),
+          Text(
+            state.isSSHConnected ? 'SSH 已連線' : '尚未連線到 Termux',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFCDD6F4),
+            ),
           ),
           const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () {
-              ref.read(termuxBridgeProvider).setupTermuxSSH();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已發送安裝指令，請查看 Termux')),
-              );
-            },
-            icon: const Icon(Icons.build),
-            label: const Text('嘗試自動配置 SSH'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF89B4FA),
-              foregroundColor: const Color(0xFF1E1E2E),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          if (!state.isSSHConnected) ...[
+            // Main Action Area
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E2E),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF313244)),
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    '1. 在 Termux 執行指令 (Port: 8022)',
+                    style: TextStyle(
+                        color: Color(0xFFBAC2DE), fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildCodeBlock('pkg install openssh -y && passwd && sshd'),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '注意：若手動設定，請將密碼設為 termux',
+                    style: TextStyle(
+                        color: Color(0xFFF38BA8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: state.isInstalling
+                        ? null
+                        : () async {
+                            ref
+                                .read(setupServiceProvider.notifier)
+                                .setInstalling(true);
+                            await ref
+                                .read(termuxBridgeProvider)
+                                .setupTermuxSSH();
+                            // Wait a bit for sshd to actually start
+                            await Future.delayed(const Duration(seconds: 2));
+                            await ref
+                                .read(setupServiceProvider.notifier)
+                                .checkEnvironment();
+                            ref
+                                .read(setupServiceProvider.notifier)
+                                .setInstalling(false);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('已嘗試自動配置，請檢查連線狀態')),
+                              );
+                            }
+                          },
+                    icon: state.isInstalling
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Color(0xFF1E1E2E)))
+                        : const Icon(Icons.build_circle, size: 20),
+                    label:
+                        Text(state.isInstalling ? '正在配置中...' : '2. 嘗試自動配置 SSH'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF89B4FA),
+                      foregroundColor: const Color(0xFF1E1E2E),
+                      minimumSize: const Size(double.infinity, 48),
+                      elevation: 0,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // New Permission Button
-          OutlinedButton.icon(
-            onPressed: () async {
-              // Open App Details for Termux to grant permission
-              const termuxPackage = 'com.termux';
-              final intent = AndroidIntent(
-                action: 'android.settings.action.MANAGE_OVERLAY_PERMISSION',
-                package: termuxPackage, // Direct to Termux if possible
-                data: 'package:$termuxPackage', // URI for specific package
-              );
-              await intent.launch();
-            },
-            icon: const Icon(Icons.layers_outlined),
-            label: const Text('授權顯示懸浮視窗 (解決 Permission Denial)'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFBAC2DE),
-              side: const BorderSide(color: Color(0xFFBAC2DE)),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+
+            const SizedBox(height: 16),
+
+            // Secondary Actions (Troubleshooting)
+            Theme(
+              data:
+                  Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                title: const Text(
+                  '遇到問題？(權限與密碼)',
+                  style: TextStyle(
+                    color: Color(0xFF6C7086),
+                    fontSize: 14,
+                  ),
+                ),
+                iconColor: const Color(0xFF6C7086),
+                collapsedIconColor: const Color(0xFF6C7086),
+                children: [
+                  const SizedBox(height: 8),
+                  const Text(
+                    '若 "自動配置 SSH" 無反應：',
+                    style: TextStyle(
+                        color: Color(0xFFBAC2DE), fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '請確認已在「權限設定」步驟中執行指令並啟用 "Allow external apps"，否則 Ide 無法控制 Termux。',
+                    style: TextStyle(color: Color(0xFFA6ADC8), fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '若遇到 "Display over other apps" 錯誤：',
+                    style: TextStyle(color: Color(0xFF7F849C), fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      const termuxPackage = 'com.termux';
+                      final intent = AndroidIntent(
+                        action:
+                            'android.settings.action.MANAGE_OVERLAY_PERMISSION',
+                        package: termuxPackage,
+                        data: 'package:$termuxPackage',
+                      );
+                      await intent.launch();
+                    },
+                    icon: const Icon(Icons.layers_outlined, size: 18),
+                    label: const Text('授權懸浮視窗'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFBAC2DE),
+                      side: const BorderSide(color: Color(0xFF45475A)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '手動設定提醒：',
+                    style: TextStyle(
+                        color: Color(0xFFBAC2DE), fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '如果自動配置失敗，請在 Termux 執行 passwd 並將密碼設為 termux，然後執行 sshd 啟動服務。',
+                    style: TextStyle(color: Color(0xFFA6ADC8), fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
             ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(top: 8.0),
-            child: Text(
-              '若遇到 "Display over other apps" 錯誤請點擊此處設定',
-              style: TextStyle(color: Colors.white24, fontSize: 10),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // New Permission Button
-          OutlinedButton.icon(
-            onPressed: () async {
-              // Open App Details for Termux to grant permission
-              const termuxPackage = 'com.termux';
-              final intent = AndroidIntent(
-                action: 'android.settings.action.MANAGE_OVERLAY_PERMISSION',
-                package: termuxPackage, // Direct to Termux if possible
-                data: 'package:$termuxPackage', // URI for specific package
-              );
-              await intent.launch();
-            },
-            icon: const Icon(Icons.layers_outlined),
-            label: const Text('授權顯示懸浮視窗 (解決 Permission Denial)'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFBAC2DE),
-              side: const BorderSide(color: Color(0xFFBAC2DE)),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(top: 8.0),
-            child: Text(
-              '若遇到 "Display over other apps" 錯誤請點擊此處設定',
-              style: TextStyle(color: Colors.white24, fontSize: 10),
-            ),
-          ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -704,6 +764,13 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
         ),
         child: const Text('開始設置'),
+      );
+    }
+
+    if (state.currentStep == SetupStep.termuxPermission) {
+      return ElevatedButton(
+        onPressed: () => ref.read(setupServiceProvider.notifier).nextStep(),
+        child: const Text('我已啟用，下一步'),
       );
     }
 

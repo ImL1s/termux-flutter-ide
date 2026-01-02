@@ -7,8 +7,8 @@ import '../termux/termux_providers.dart'; // import termuxBridgeProvider
 enum SetupStep {
   welcome,
   termux, // Check if Termux app is installed
+  termuxPermission, // Enable allow-external-apps in Termux (Prerequisite for Bridge)
   ssh,
-  termuxPermission, // Enable allow-external-apps in Termux
   flutter,
   x11, // Optional, can be done later, but good to check
   complete,
@@ -126,11 +126,14 @@ class SetupService extends Notifier<SetupState> {
       case SetupStep.termux:
         checkEnvironment().then((_) {
           if (state.isTermuxInstalled) {
-            // After installing, go to next step (usually SSH)
-            state = state.copyWith(currentStep: SetupStep.ssh);
+            // After installing, go to Permission first (so bridge works for SSH setup)
+            state = state.copyWith(currentStep: SetupStep.termuxPermission);
           }
-          // If not installed, stay on step (UI handles it)
         });
+        break;
+      case SetupStep.termuxPermission:
+        // After permission step, go to SSH
+        state = state.copyWith(currentStep: SetupStep.ssh);
         break;
       case SetupStep.ssh:
         checkEnvironment().then((_) {
@@ -138,22 +141,13 @@ class SetupService extends Notifier<SetupState> {
             if (state.isFlutterInstalled) {
               state = state.copyWith(currentStep: SetupStep.complete);
             } else {
-              // Go to permission step first
-              state = state.copyWith(currentStep: SetupStep.termuxPermission);
+              state = state.copyWith(currentStep: SetupStep.flutter);
             }
           } else {
-            // SSH not connected, but user chose to skip/continue (Bridge mode)
-            state = state.copyWith(currentStep: SetupStep.termuxPermission);
+            // User choosing to skip/continue regardless of SSH
+            state = state.copyWith(currentStep: SetupStep.flutter);
           }
         });
-        break;
-      case SetupStep.termuxPermission:
-        // After permission configuration, go to Flutter install
-        if (state.isFlutterInstalled) {
-          state = state.copyWith(currentStep: SetupStep.complete);
-        } else {
-          state = state.copyWith(currentStep: SetupStep.flutter);
-        }
         break;
       case SetupStep.flutter:
         // Assume installation done or skipped
@@ -171,6 +165,8 @@ class SetupService extends Notifier<SetupState> {
 
   /// Retry connection
   Future<bool> retryConnection() async {
+    // Force a connection attempt
+    await ref.read(sshServiceProvider).connectWithRetry();
     await checkEnvironment();
     return state.isSSHConnected;
   }

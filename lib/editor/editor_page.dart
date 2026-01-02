@@ -12,6 +12,7 @@ import '../termux/ssh_service.dart';
 import '../ai/ai_chat_widget.dart';
 import '../ai/ai_providers.dart';
 import '../search/search_widget.dart';
+import '../analyzer/analysis_dashboard.dart';
 import 'activity_bar.dart';
 import 'command_palette.dart';
 import 'debug_panel_widget.dart';
@@ -32,6 +33,7 @@ import '../services/lsp_service.dart';
 import 'editor_request_provider.dart';
 import 'references_dialog.dart';
 import 'rename_dialog.dart';
+import '../core/responsive.dart';
 import 'workspace_symbol_dialog.dart';
 import 'recent_files_dialog.dart';
 import 'keyboard_shortcuts_dialog.dart';
@@ -48,16 +50,35 @@ class EditorPage extends ConsumerStatefulWidget {
   ConsumerState<EditorPage> createState() => _EditorPageState();
 }
 
-class _EditorPageState extends ConsumerState<EditorPage> {
+class _EditorPageState extends ConsumerState<EditorPage>
+    with WidgetsBindingObserver {
   bool _showTerminal = false;
   final double _initialTerminalHeight = 250;
 
   @override
   void initState() {
     super.initState();
+    // Register observer for fold state changes
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _registerCommands();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Called when device metrics change (fold/unfold, rotation, etc.)
+  /// This ensures UI updates when transitioning between fold states
+  @override
+  void didChangeMetrics() {
+    // Force rebuild to adapt to new fold state
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _registerCommands() {
@@ -230,7 +251,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       }
     });
 
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final formFactor = Responsive.getFormFactor(context);
 
     return CallbackShortcuts(
       bindings: {
@@ -310,12 +331,319 @@ class _EditorPageState extends ConsumerState<EditorPage> {
               },
             ),
             Expanded(
-              child:
-                  isMobile ? _buildMobileScaffold() : _buildDesktopScaffold(),
+              child: _buildScaffoldForFormFactor(formFactor),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// Builds the appropriate scaffold based on device form factor
+  /// Uses AnimatedSwitcher for smooth transitions between fold states
+  Widget _buildScaffoldForFormFactor(DeviceFormFactor formFactor) {
+    Widget scaffold;
+
+    // Priority 1: Flex Mode (half-opened posture)
+    if (Responsive.isFlexMode(context)) {
+      scaffold = _buildFlexModeScaffold();
+    }
+    // Priority 2: Cover Screen (narrow tall screen when folded)
+    else if (Responsive.isCoverScreen(context)) {
+      scaffold = _buildMobileScaffold();
+    }
+    // Default: Based on form factor
+    else {
+      switch (formFactor) {
+        case DeviceFormFactor.mobile:
+          scaffold = _buildMobileScaffold();
+        case DeviceFormFactor.foldableOpen:
+          scaffold = _buildFoldableScaffold();
+        case DeviceFormFactor.tablet:
+        case DeviceFormFactor.desktop:
+          scaffold = _buildDesktopScaffold();
+      }
+    }
+
+    // Smooth transition between layouts
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      switchInCurve: Curves.easeInOut,
+      switchOutCurve: Curves.easeInOut,
+      child: KeyedSubtree(
+        key: ValueKey(
+            formFactor.toString() + Responsive.isFlexMode(context).toString()),
+        child: scaffold,
+      ),
+    );
+  }
+
+  /// Flex Mode layout: Upper half = Editor, Lower half = Control Panel
+  /// Used when device is in half-opened (laptop-like) posture
+  Widget _buildFlexModeScaffold() {
+    final splitY = Responsive.getFlexModeSplitPosition(context) ??
+        MediaQuery.of(context).size.height / 2;
+    final foldHeight = Responsive.getFoldHeight(context);
+
+    // Calculate available heights
+    final topHeight = splitY - foldHeight / 2;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ===== TOP HALF: Editor =====
+            SizedBox(
+              height: topHeight - 48, // Account for AppBar
+              child: Column(
+                children: [
+                  // Compact AppBar
+                  _buildFlexModeAppBar(),
+                  // File Tabs
+                  const FileTabsWidget(),
+                  const Divider(height: 1),
+                  // Code Editor
+                  const Expanded(child: CodeEditorWidget()),
+                ],
+              ),
+            ),
+
+            // ===== FOLD GAP =====
+            SizedBox(height: foldHeight + 8),
+
+            // ===== BOTTOM HALF: Control Panel =====
+            Expanded(
+              child: _buildFlexModeControlPanel(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Compact AppBar for Flex Mode
+  PreferredSizeWidget _buildFlexModeAppBar() {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(40),
+      child: AppBar(
+        toolbarHeight: 40,
+        title: Consumer(
+          builder: (context, ref, _) {
+            final projectPath = ref.watch(projectPathProvider);
+            final projectName = projectPath?.split('/').last ?? 'IDE';
+            return Text(
+              projectName,
+              style: const TextStyle(fontSize: 14),
+            );
+          },
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.play_arrow,
+                color: Color(0xFFCBA6F7), size: 20),
+            onPressed: _runFlutter,
+            tooltip: 'Run',
+          ),
+          IconButton(
+            icon: const Icon(Icons.save, color: Color(0xFFCBA6F7), size: 20),
+            onPressed: () => ref.read(saveTriggerProvider.notifier).trigger(),
+            tooltip: 'Save',
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Control Panel for Flex Mode bottom half
+  /// Optimized for touch accessibility and keyboard handling
+  Widget _buildFlexModeControlPanel() {
+    // Handle keyboard insets to avoid bottom panel being obscured
+    final keyboardInsets = MediaQuery.of(context).viewInsets.bottom;
+    final hasKeyboard = keyboardInsets > 0;
+
+    return Container(
+      color: const Color(0xFF181825),
+      child: DefaultTabController(
+        length: 4,
+        child: Column(
+          children: [
+            // Tab Bar - Minimum 48px height for touch accessibility
+            Container(
+              color: const Color(0xFF11111B),
+              constraints: const BoxConstraints(minHeight: 48),
+              child: const TabBar(
+                labelPadding: EdgeInsets.symmetric(horizontal: 12),
+                indicatorWeight: 3,
+                tabs: [
+                  Tab(icon: Icon(Icons.terminal, size: 20), text: 'Terminal'),
+                  Tab(
+                      icon: Icon(Icons.warning_amber, size: 20),
+                      text: 'Problems'),
+                  Tab(icon: Icon(Icons.bug_report, size: 20), text: 'Debug'),
+                  Tab(icon: Icon(Icons.play_circle, size: 20), text: 'Runner'),
+                ],
+              ),
+            ),
+            // Tab Content with PageStorageKey for scroll preservation
+            Expanded(
+              child: hasKeyboard
+                  ? const SizedBox
+                      .shrink() // Hide content when keyboard is open
+                  : const TabBarView(
+                      children: [
+                        TerminalWidget(key: PageStorageKey('flex_terminal')),
+                        ProblemsView(key: PageStorageKey('flex_problems')),
+                        DebugPanelWidget(key: PageStorageKey('flex_debug')),
+                        FlutterRunnerWidget(key: PageStorageKey('flex_runner')),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Foldable-specific layout with TwoPane design avoiding the hinge
+  Widget _buildFoldableScaffold() {
+    final hingeBounds = Responsive.getHingeBounds(context);
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Calculate pane widths avoiding hinge
+    final leftPaneWidth =
+        hingeBounds != null ? hingeBounds.left : screenWidth * 0.4;
+    final hingeWidth = hingeBounds?.width ?? 0;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Consumer(
+          builder: (context, ref, _) {
+            final projectPath = ref.watch(projectPathProvider);
+            final projectName = projectPath?.split('/').last ?? 'IDE';
+            return Text(
+              projectPath != null
+                  ? '$projectName - Termux IDE'
+                  : 'Termux Foldable IDE',
+              style: const TextStyle(fontSize: 16),
+            );
+          },
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.play_arrow, color: Color(0xFFCBA6F7)),
+            onPressed: _runFlutter,
+            tooltip: 'Run',
+          ),
+          IconButton(
+            icon: const Icon(Icons.save, color: Color(0xFFCBA6F7)),
+            onPressed: () => ref.read(saveTriggerProvider.notifier).trigger(),
+            tooltip: 'Save',
+          ),
+          IconButton(
+            icon: const Icon(Icons.psychology),
+            onPressed: _showAIMobile,
+            tooltip: 'AI Assistant',
+          ),
+        ],
+      ),
+      body: Row(
+        children: [
+          // Left Pane: Sidebar
+          SizedBox(
+            width: leftPaneWidth,
+            child: Column(
+              children: [
+                // Activity Bar (simplified horizontal for foldable)
+                Container(
+                  color: const Color(0xFF11111B),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildFoldableActivityIcon(ActivityItem.explorer,
+                          Icons.folder_outlined, 'Explorer'),
+                      _buildFoldableActivityIcon(
+                          ActivityItem.search, Icons.search, 'Search'),
+                      _buildFoldableActivityIcon(ActivityItem.sourceControl,
+                          Icons.source_outlined, 'Git'),
+                      _buildFoldableActivityIcon(ActivityItem.debug,
+                          Icons.bug_report_outlined, 'Debug'),
+                      _buildFoldableActivityIcon(ActivityItem.analyzer,
+                          Icons.analytics_outlined, 'Health'),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                // Sidebar Content
+                Expanded(
+                  child:
+                      _buildSidebarContent(ref.watch(selectedActivityProvider)),
+                ),
+              ],
+            ),
+          ),
+
+          // Hinge Spacing (avoid fold crease)
+          if (hingeWidth > 0) SizedBox(width: hingeWidth + 8),
+
+          // Right Pane: Editor
+          Expanded(
+            child: Column(
+              children: [
+                const FileTabsWidget(),
+                const Divider(height: 1),
+                const Expanded(child: CodeEditorWidget()),
+                // Terminal Toggle
+                if (_showTerminal) ...[
+                  const Divider(height: 1),
+                  SizedBox(
+                    height: 200,
+                    child: DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          Container(
+                            color: const Color(0xFF181825),
+                            child: const TabBar(
+                              tabs: [
+                                Tab(text: 'Terminal'),
+                                Tab(text: 'Problems'),
+                              ],
+                            ),
+                          ),
+                          const Expanded(
+                            child: TabBarView(
+                              children: [
+                                TerminalWidget(),
+                                ProblemsView(),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Helper for foldable activity bar icons
+  Widget _buildFoldableActivityIcon(
+      ActivityItem item, IconData icon, String tooltip) {
+    final isSelected = ref.watch(selectedActivityProvider) == item;
+    return IconButton(
+      icon: Icon(
+        icon,
+        color: isSelected ? const Color(0xFFCBA6F7) : Colors.grey,
+        size: 22,
+      ),
+      onPressed: () => ref.read(selectedActivityProvider.notifier).toggle(item),
+      tooltip: tooltip,
     );
   }
 
@@ -813,6 +1141,8 @@ class _EditorPageState extends ConsumerState<EditorPage> {
 
   Widget _buildSidebarContent(ActivityItem item) {
     switch (item) {
+      case ActivityItem.analyzer:
+        return const AnalysisDashboard();
       case ActivityItem.explorer:
         return const FileTreeWidget();
       case ActivityItem.search:

@@ -134,10 +134,14 @@ class TermuxBridge {
     // 3. Generate SSH keys if needed
     // 4. Start SSHD
     //
-    // NOTE: User must set password manually with `passwd` before connecting
+    // NOTE: We attempt to set the password to 'termux' automatically.
+    // 1. Try 'chpasswd' with current user
+    // 2. Try piping to 'passwd' as fallback
     const cmd = 'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; '
         'termux-wake-lock; '
-        'pkg install -y openssh > /dev/null 2>&1 || true; '
+        'apt-get update -y > /dev/null 2>&1 || true; ' // Update repo lists
+        'apt-get install -y openssh > /dev/null 2>&1 || true; ' // Use apt-get for consistency
+        'echo "\$(whoami):termux" | chpasswd > /dev/null 2>&1 || (echo "termux"; echo "termux") | passwd > /dev/null 2>&1 || true; '
         'ssh-keygen -A 2>/dev/null || true; '
         'sshd 2>/dev/null || pkill sshd; sleep 1; sshd';
     return executeCommand(cmd, background: false);

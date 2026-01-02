@@ -116,6 +116,20 @@ class FlutterRunnerService {
     stateNotifier.setState(RunnerState.connecting);
     print('FlutterRunnerService: Starting run for ${config.name}');
 
+    // 2.5 Ensure SSH is connected
+    final sshService = _ref.read(sshServiceProvider);
+    if (!sshService.isConnected) {
+      print(
+          'FlutterRunnerService: SSH not connected, attempting to connect...');
+      try {
+        await sshService.connectWithRetry(); // Use retry logic
+      } catch (e) {
+        stateNotifier.setState(RunnerState.error);
+        errorNotifier.setError('無法連線到 Termux (SSH): $e');
+        return;
+      }
+    }
+
     try {
       final notifier = _ref.read(terminalSessionsProvider.notifier);
 
