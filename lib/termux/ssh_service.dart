@@ -95,11 +95,11 @@ class SSHService {
       } catch (e) {
         print('SSHService: Attempt $attempt failed: $e');
 
-        if (attempt == 1) {
-          // First failure: trigger bootstrap
-          await ensureBootstrapped();
-        } else if (attempt < maxRetries) {
-          // Subsequent failures: just wait and retry
+        if (attempt < maxRetries) {
+          // Failure: just wait and retry.
+          // Do NOT call ensureBootstrapped() automatically, as it opens Termux app
+          // and interrupts the user experience (context switch).
+          // Let the UI handle the error and prompt the user.
           await Future.delayed(const Duration(seconds: 2));
         }
       }

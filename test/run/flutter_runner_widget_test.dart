@@ -174,8 +174,8 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Should show placeholder text
-      expect(find.text('Select a configuration and press Run'), findsOneWidget);
+      // Should show placeholder text with config name
+      expect(find.text('Run Test'), findsOneWidget);
       expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
     });
 

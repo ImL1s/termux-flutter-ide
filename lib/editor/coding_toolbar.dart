@@ -10,8 +10,13 @@ import '../core/providers.dart';
 
 class CodingToolbar extends ConsumerWidget {
   final CodeController controller;
+  final VoidCallback onSearch;
 
-  const CodingToolbar({super.key, required this.controller});
+  const CodingToolbar({
+    super.key,
+    required this.controller,
+    required this.onSearch,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -114,10 +119,7 @@ class CodingToolbar extends ConsumerWidget {
                   });
                 }
                 if (index == 4) {
-                  return _buildButton('🔍', () {
-                    final registry = ref.read(commandServiceProvider);
-                    registry.execute('editor.find');
-                  });
+                  return _buildButton('🔍', onSearch);
                 }
                 if (index == _symbols.length + 5) {
                   return const SizedBox(width: 8);

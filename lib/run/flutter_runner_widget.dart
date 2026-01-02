@@ -449,4 +449,18 @@ class FlutterRunnerWidget extends ConsumerWidget {
       ],
     );
   }
+
+  void showSSHErrorDialog(
+    BuildContext context, {
+    required String errorMessage,
+    required VoidCallback onRetry,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => SSHErrorDialog(
+        errorMessage: errorMessage,
+        onRetry: onRetry,
+      ),
+    );
+  }
 }

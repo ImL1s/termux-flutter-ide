@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:android_intent_plus/android_intent.dart';
 import '../termux/termux_providers.dart';
 import 'setup_service.dart';
 
@@ -384,6 +385,62 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
               backgroundColor: const Color(0xFF89B4FA),
               foregroundColor: const Color(0xFF1E1E2E),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // New Permission Button
+          OutlinedButton.icon(
+            onPressed: () async {
+              // Open App Details for Termux to grant permission
+              const termuxPackage = 'com.termux';
+              final intent = AndroidIntent(
+                action: 'android.settings.action.MANAGE_OVERLAY_PERMISSION',
+                package: termuxPackage, // Direct to Termux if possible
+                data: 'package:$termuxPackage', // URI for specific package
+              );
+              await intent.launch();
+            },
+            icon: const Icon(Icons.layers_outlined),
+            label: const Text('授權顯示懸浮視窗 (解決 Permission Denial)'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFBAC2DE),
+              side: const BorderSide(color: Color(0xFFBAC2DE)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 8.0),
+            child: Text(
+              '若遇到 "Display over other apps" 錯誤請點擊此處設定',
+              style: TextStyle(color: Colors.white24, fontSize: 10),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // New Permission Button
+          OutlinedButton.icon(
+            onPressed: () async {
+              // Open App Details for Termux to grant permission
+              const termuxPackage = 'com.termux';
+              final intent = AndroidIntent(
+                action: 'android.settings.action.MANAGE_OVERLAY_PERMISSION',
+                package: termuxPackage, // Direct to Termux if possible
+                data: 'package:$termuxPackage', // URI for specific package
+              );
+              await intent.launch();
+            },
+            icon: const Icon(Icons.layers_outlined),
+            label: const Text('授權顯示懸浮視窗 (解決 Permission Denial)'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFBAC2DE),
+              side: const BorderSide(color: Color(0xFFBAC2DE)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 8.0),
+            child: Text(
+              '若遇到 "Display over other apps" 錯誤請點擊此處設定',
+              style: TextStyle(color: Colors.white24, fontSize: 10),
             ),
           ),
         ],

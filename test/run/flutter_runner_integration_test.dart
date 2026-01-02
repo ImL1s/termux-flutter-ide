@@ -1,10 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:termux_flutter_ide/run/flutter_runner_service.dart';
 import 'package:termux_flutter_ide/run/launch_config.dart';
 import 'package:termux_flutter_ide/core/providers.dart';
 import 'package:termux_flutter_ide/terminal/terminal_session.dart';
+import 'package:termux_flutter_ide/file_manager/file_operations.dart';
+import 'package:termux_flutter_ide/termux/ssh_service.dart';
+import 'package:termux_flutter_ide/termux/termux_bridge.dart';
 
 // Mock TerminalSessionNotifier
 class MockTerminalSessionNotifier extends TerminalSessionNotifier {
@@ -44,7 +48,22 @@ class NullProjectPathNotifier extends ProjectPathNotifier {
   String? build() => null;
 }
 
+class MockSSHService extends SSHService {
+  MockSSHService() : super(TermuxBridge());
+}
+
+class MockFileOperations extends FileOperations {
+  MockFileOperations() : super(MockSSHService());
+
+  @override
+  Future<bool> exists(String path) async {
+    return File(path).exists();
+  }
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('LaunchConfiguration Tests', () {
     test('fromJson parses basic configuration correctly', () {
       final json = {
@@ -141,6 +160,15 @@ void main() {
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('flutter_runner_test');
+
+      // Mock installed_apps channel
+      const MethodChannel('installed_apps')
+          .setMockMethodCallHandler((MethodCall methodCall) async {
+        if (methodCall.method == 'isAppInstalled') {
+          return true; // Simulate Termux:X11 installed
+        }
+        return null;
+      });
     });
 
     tearDown(() async {
@@ -156,6 +184,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 
@@ -175,6 +204,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 
@@ -191,6 +221,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 
@@ -215,6 +246,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 
@@ -244,6 +276,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 
@@ -280,6 +313,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 
@@ -304,6 +338,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 
@@ -327,6 +362,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 
@@ -353,6 +389,7 @@ void main() {
               .overrideWith(ActiveRunnerSessionIdNotifier.new),
           runnerStateProvider.overrideWith(RunnerStateNotifier.new),
           runnerErrorProvider.overrideWith(RunnerErrorNotifier.new),
+          fileOperationsProvider.overrideWithValue(MockFileOperations()),
         ],
       );
 

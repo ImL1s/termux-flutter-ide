@@ -257,7 +257,10 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
           ),
         ),
         if (MediaQuery.of(context).viewInsets.bottom > 0)
-          CodingToolbar(controller: _controller!),
+          CodingToolbar(
+            controller: _controller!,
+            onSearch: () => setState(() => _showFindReplace = true),
+          ),
       ],
     );
   }
