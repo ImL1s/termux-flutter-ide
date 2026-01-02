@@ -154,6 +154,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         action: _findReferences,
       ),
     );
+
+    registry.register(
+      Command(
+        id: 'editor.format',
+        title: 'Format Document',
+        category: 'Editor',
+        icon: Icons.format_align_left,
+        action: _formatDocument,
+      ),
+    );
   }
 
   @override
@@ -836,6 +846,15 @@ class _EditorPageState extends ConsumerState<EditorPage> {
 
     if (!mounted) return;
     showReferencesDialog(context, ref, references, 'Symbol');
+  }
+
+  void _formatDocument() {
+    final currentFile = ref.read(currentFileProvider);
+    if (currentFile == null) return;
+
+    ref
+        .read(editorRequestProvider.notifier)
+        .request(FormatRequest(currentFile));
   }
 
   Widget _buildBottomTab(WidgetRef ref, BottomPanelTab tab, String label) {

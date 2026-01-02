@@ -9,6 +9,11 @@ class JumpToLineRequest extends EditorRequest {
   JumpToLineRequest(this.filePath, this.lineNumber);
 }
 
+class FormatRequest extends EditorRequest {
+  final String filePath;
+  FormatRequest(this.filePath);
+}
+
 class EditorRequestNotifier extends Notifier<EditorRequest?> {
   @override
   EditorRequest? build() {

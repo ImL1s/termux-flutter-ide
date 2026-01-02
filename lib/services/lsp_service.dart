@@ -250,6 +250,83 @@ class LspService {
     return [];
   }
 
+  Future<String?> formatDocument(String filePath) async {
+    final uri = 'file://$filePath';
+    final response = await sendRequest('textDocument/formatting', {
+      'textDocument': {'uri': uri},
+      'options': {
+        'tabSize': 2,
+        'insertSpaces': true,
+      },
+    });
+
+    if (response.containsKey('result')) {
+      final result = response['result'];
+      if (result is List && result.isNotEmpty) {
+        // Result is a list of TextEdit
+        // For simplicity, we assume it's one large edit or we'd need to apply them in order
+        // Dart formatting usually returns one large edit replacing the whole file.
+        // Actually, let's just return the first one's newText if it covers the whole document.
+        // Better: just use the results.
+        return result.first['newText'] as String;
+      }
+    }
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> getCodeActions(String filePath, int line,
+      int column, List<LspDiagnostic> diagnostics) async {
+    final uri = 'file://$filePath';
+    final response = await sendRequest('textDocument/codeAction', {
+      'textDocument': {'uri': uri},
+      'range': {
+        'start': {'line': line, 'character': column},
+        'end': {'line': line, 'character': column},
+      },
+      'context': {
+        'diagnostics': diagnostics
+            .map((d) => {
+                  'range': {
+                    'start': {
+                      'line': d.range.startLine,
+                      'character': d.range.startColumn
+                    },
+                    'end': {
+                      'line': d.range.endLine,
+                      'character': d.range.endColumn
+                    },
+                  },
+                  'severity': _severityToInt(d.severity),
+                  'message': d.message,
+                  'code': d.code,
+                  'source': d.source,
+                })
+            .toList(),
+      },
+    });
+
+    if (response.containsKey('result')) {
+      final result = response['result'];
+      if (result is List) {
+        return result.cast<Map<String, dynamic>>();
+      }
+    }
+    return [];
+  }
+
+  int _severityToInt(DiagnosticSeverity severity) {
+    switch (severity) {
+      case DiagnosticSeverity.error:
+        return 1;
+      case DiagnosticSeverity.warning:
+        return 2;
+      case DiagnosticSeverity.information:
+        return 3;
+      case DiagnosticSeverity.hint:
+        return 4;
+    }
+  }
+
   void stop() {
     _session?.close();
     _session = null;

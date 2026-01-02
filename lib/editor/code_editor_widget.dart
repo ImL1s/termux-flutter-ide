@@ -25,6 +25,7 @@ import 'editor_request_provider.dart'; // Import Request Provider
 import 'completion/completion_service.dart';
 import 'package:termux_flutter_ide/run/breakpoint_service.dart';
 import '../services/lsp_service.dart';
+import 'diagnostics_provider.dart';
 
 class CodeEditorWidget extends ConsumerStatefulWidget {
   const CodeEditorWidget({super.key});
@@ -129,6 +130,12 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
             _jumpToLine(next.lineNumber);
           }
         }
+      } else if (next is FormatRequest) {
+        if (next.filePath == currentFile) {
+          if (_controller != null) {
+            _formatDocument();
+          }
+        }
       }
     });
 
@@ -203,6 +210,17 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
                     width: 45, // Match gutterWidth in _BreakpointLayer
                     child: _BreakpointLayer(
                       controller: _controller!,
+                      fontSize: fontSize,
+                      filePath: _currentFilePath!,
+                    ),
+                  ),
+                  // Diagnostic Gutter Layer
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 45,
+                    child: _DiagnosticGutterLayer(
                       fontSize: fontSize,
                       filePath: _currentFilePath!,
                     ),
@@ -426,6 +444,110 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
     // However, focusing and setting selection usually brings it into view.
     // For better scrolling, we might need Scrollable.ensureVisible or similar if we had keys.
     // But let's rely on selection behavior for now.
+    // However, for the gutter to update correctly, we should force a rebuild if needed.
+    setState(() {});
+  }
+
+  Future<void> _formatDocument() async {
+    if (_currentFilePath == null || !_currentFilePath!.endsWith('.dart'))
+      return;
+
+    final lsp = ref.read(lspServiceProvider);
+    final formatted = await lsp.formatDocument(_currentFilePath!);
+
+    if (formatted != null && mounted) {
+      _controller?.text = formatted;
+      saveFile();
+    }
+  }
+}
+
+class _DiagnosticGutterLayer extends ConsumerWidget {
+  final double fontSize;
+  final String filePath;
+
+  const _DiagnosticGutterLayer({
+    required this.fontSize,
+    required this.filePath,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final diagnosticsState = ref.watch(diagnosticsProvider);
+    // URI mapping - Lsp uses file://
+    final uri = 'file://$filePath';
+    final diagnostics = diagnosticsState.fileDiagnostics[uri] ?? [];
+
+    final lineHeight = fontSize * 1.5;
+    const gutterWidth = 45.0;
+
+    return IgnorePointer(
+      child: SizedBox.expand(
+        child: CustomPaint(
+          painter: _DiagnosticGutterPainter(
+            diagnostics: diagnostics,
+            lineHeight: lineHeight,
+            gutterWidth: gutterWidth,
+            scrollOffset: Scrollable.maybeOf(context)?.position.pixels ?? 0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DiagnosticGutterPainter extends CustomPainter {
+  final List<LspDiagnostic> diagnostics;
+  final double lineHeight;
+  final double gutterWidth;
+  final double scrollOffset;
+
+  _DiagnosticGutterPainter({
+    required this.diagnostics,
+    required this.lineHeight,
+    required this.gutterWidth,
+    required this.scrollOffset,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final d in diagnostics) {
+      final line = d.range.startLine + 1;
+      final y = (line - 1) * lineHeight - scrollOffset + (lineHeight / 2);
+
+      if (y >= -lineHeight && y <= size.height + lineHeight) {
+        final paint = Paint()..style = PaintingStyle.fill;
+
+        switch (d.severity) {
+          case DiagnosticSeverity.error:
+            paint.color = Colors.redAccent;
+            break;
+          case DiagnosticSeverity.warning:
+            paint.color = Colors.amber;
+            break;
+          case DiagnosticSeverity.information:
+            paint.color = Colors.blue;
+            break;
+          case DiagnosticSeverity.hint:
+            paint.color = Colors.grey;
+            break;
+        }
+
+        // Draw a small indicator triangle or dot on the right side of gutter
+        canvas.drawRect(
+          Rect.fromLTWH(
+              gutterWidth - 4, y - (lineHeight / 4), 3, lineHeight / 2),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DiagnosticGutterPainter oldDelegate) {
+    return oldDelegate.diagnostics != diagnostics ||
+        oldDelegate.scrollOffset != scrollOffset ||
+        oldDelegate.lineHeight != lineHeight;
   }
 }
 
