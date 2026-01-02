@@ -327,6 +327,37 @@ class LspService {
     }
   }
 
+  /// Rename Symbol
+  Future<Map<String, dynamic>?> renameSymbol(
+      String filePath, int line, int column, String newName) async {
+    final uri = 'file://$filePath';
+    final response = await sendRequest('textDocument/rename', {
+      'textDocument': {'uri': uri},
+      'position': {'line': line, 'character': column},
+      'newName': newName,
+    });
+
+    if (response.containsKey('result')) {
+      return response['result'] as Map<String, dynamic>?;
+    }
+    return null;
+  }
+
+  /// Workspace Symbol Search
+  Future<List<Map<String, dynamic>>> workspaceSymbol(String query) async {
+    final response = await sendRequest('workspace/symbol', {
+      'query': query,
+    });
+
+    if (response.containsKey('result')) {
+      final result = response['result'];
+      if (result is List) {
+        return result.cast<Map<String, dynamic>>();
+      }
+    }
+    return [];
+  }
+
   void stop() {
     _session?.close();
     _session = null;

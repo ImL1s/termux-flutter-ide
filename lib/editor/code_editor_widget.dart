@@ -27,6 +27,7 @@ import 'package:termux_flutter_ide/run/breakpoint_service.dart';
 import '../services/lsp_service.dart';
 import 'diagnostics_provider.dart';
 import 'find_replace_bar.dart';
+import 'breadcrumb_bar.dart';
 
 class CodeEditorWidget extends ConsumerStatefulWidget {
   const CodeEditorWidget({super.key});
@@ -197,6 +198,8 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
             controller: _controller!,
             onClose: () => setState(() => _showFindReplace = false),
           ),
+        // Breadcrumb Bar
+        const BreadcrumbBar(),
         Expanded(
           child: Container(
             color: const Color(0xFF1E1E2E),

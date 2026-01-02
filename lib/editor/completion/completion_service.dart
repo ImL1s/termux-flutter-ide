@@ -101,6 +101,89 @@ class _\${1:MyWidget}State extends State<\${1:MyWidget}> {
       type: SuggestionType.snippet,
       detail: 'Import Material',
     ),
+    // Additional mobile-productivity snippets
+    Suggestion(
+      label: 'riverpod',
+      insertText:
+          '''final \${1:name}Provider = StateProvider<\${2:Type}>((ref) {
+  return \${0:initialValue};
+});''',
+      type: SuggestionType.snippet,
+      detail: 'Riverpod Provider',
+    ),
+    Suggestion(
+      label: 'consumer',
+      insertText: '''Consumer(
+  builder: (context, ref, child) {
+    final \${1:value} = ref.watch(\${2:provider});
+    return \${0:Container()};
+  },
+)''',
+      type: SuggestionType.snippet,
+      detail: 'Riverpod Consumer',
+    ),
+    Suggestion(
+      label: 'async',
+      insertText: '''Future<\${1:void}> \${2:functionName}() async {
+  try {
+    \${0}
+  } catch (e) {
+    print('Error: \$e');
+  }
+}''',
+      type: SuggestionType.snippet,
+      detail: 'Async Function',
+    ),
+    Suggestion(
+      label: 'printd',
+      insertText: "print('DEBUG: \${1:message}');",
+      type: SuggestionType.snippet,
+      detail: 'Debug Print',
+    ),
+    Suggestion(
+      label: 'column',
+      insertText: '''Column(
+  mainAxisAlignment: MainAxisAlignment.\${1:center},
+  children: [
+    \${0}
+  ],
+)''',
+      type: SuggestionType.snippet,
+      detail: 'Column Widget',
+    ),
+    Suggestion(
+      label: 'row',
+      insertText: '''Row(
+  mainAxisAlignment: MainAxisAlignment.\${1:spaceBetween},
+  children: [
+    \${0}
+  ],
+)''',
+      type: SuggestionType.snippet,
+      detail: 'Row Widget',
+    ),
+    Suggestion(
+      label: 'padding',
+      insertText: '''Padding(
+  padding: const EdgeInsets.all(\${1:8.0}),
+  child: \${0:Container()},
+)''',
+      type: SuggestionType.snippet,
+      detail: 'Padding Widget',
+    ),
+    Suggestion(
+      label: 'container',
+      insertText: '''Container(
+  padding: const EdgeInsets.all(\${1:16}),
+  decoration: BoxDecoration(
+    color: \${2:Colors.white},
+    borderRadius: BorderRadius.circular(\${3:8}),
+  ),
+  child: \${0},
+)''',
+      type: SuggestionType.snippet,
+      detail: 'Styled Container',
+    ),
   ];
 
   /// Scan file content to extract keywords (naive approach)

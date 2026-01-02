@@ -31,6 +31,9 @@ import 'diagnostics_provider.dart';
 import '../services/lsp_service.dart';
 import 'editor_request_provider.dart';
 import 'references_dialog.dart';
+import 'rename_dialog.dart';
+import 'workspace_symbol_dialog.dart';
+import 'recent_files_dialog.dart';
 
 enum BottomPanelTab { terminal, problems }
 
@@ -172,6 +175,36 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         category: 'Editor',
         icon: Icons.search,
         action: _openFindReplace,
+      ),
+    );
+
+    registry.register(
+      Command(
+        id: 'editor.rename',
+        title: 'Rename Symbol',
+        category: 'Editor',
+        icon: Icons.edit,
+        action: _renameSymbol,
+      ),
+    );
+
+    registry.register(
+      Command(
+        id: 'editor.workspaceSymbol',
+        title: 'Search Symbols',
+        category: 'Editor',
+        icon: Icons.account_tree,
+        action: _showWorkspaceSymbolSearch,
+      ),
+    );
+
+    registry.register(
+      Command(
+        id: 'editor.recentFiles',
+        title: 'Recent Files',
+        category: 'Navigation',
+        icon: Icons.history,
+        action: _showRecentFiles,
       ),
     );
   }
@@ -857,6 +890,20 @@ class _EditorPageState extends ConsumerState<EditorPage> {
 
   void _openFindReplace() {
     ref.read(editorRequestProvider.notifier).request(FindReplaceRequest());
+  }
+
+  void _renameSymbol() {
+    final currentFile = ref.read(currentFileProvider);
+    if (currentFile == null) return;
+    showRenameDialog(context, ref, currentFile);
+  }
+
+  void _showWorkspaceSymbolSearch() {
+    showWorkspaceSymbolDialog(context, ref);
+  }
+
+  void _showRecentFiles() {
+    showRecentFilesDialog(context, ref);
   }
 
   Widget _buildBottomTab(WidgetRef ref, BottomPanelTab tab, String label) {
