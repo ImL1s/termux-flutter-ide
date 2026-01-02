@@ -34,6 +34,7 @@ import 'references_dialog.dart';
 import 'rename_dialog.dart';
 import 'workspace_symbol_dialog.dart';
 import 'recent_files_dialog.dart';
+import 'keyboard_shortcuts_dialog.dart';
 
 enum BottomPanelTab { terminal, problems }
 
@@ -205,6 +206,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         category: 'Navigation',
         icon: Icons.history,
         action: _showRecentFiles,
+      ),
+    );
+
+    registry.register(
+      Command(
+        id: 'editor.keyboardShortcuts',
+        title: 'Keyboard Shortcuts',
+        category: 'Help',
+        icon: Icons.keyboard,
+        action: () => showKeyboardShortcutsDialog(context),
       ),
     );
   }
