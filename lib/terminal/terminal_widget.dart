@@ -8,6 +8,9 @@ import '../core/providers.dart';
 import 'terminal_session.dart';
 import 'terminal_quick_commands.dart';
 
+/// Auto-scroll toggle for terminal output
+final _autoScrollProvider = StateProvider<bool>((ref) => true);
+
 class TerminalWidget extends ConsumerStatefulWidget {
   const TerminalWidget({super.key});
 
@@ -165,6 +168,22 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
                 );
               },
             ),
+          ),
+          // Auto-Scroll Toggle
+          Consumer(
+            builder: (context, ref, _) {
+              final autoScroll = ref.watch(_autoScrollProvider);
+              return IconButton(
+                icon: Icon(
+                  autoScroll ? Icons.vertical_align_bottom : Icons.pause,
+                  size: 18,
+                  color: autoScroll ? AppTheme.tertiary : Colors.grey,
+                ),
+                onPressed: () =>
+                    ref.read(_autoScrollProvider.notifier).state = !autoScroll,
+                tooltip: autoScroll ? 'Auto-Scroll On' : 'Auto-Scroll Off',
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.add, size: 20),
