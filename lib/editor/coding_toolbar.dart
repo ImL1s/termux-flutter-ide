@@ -113,11 +113,17 @@ class CodingToolbar extends ConsumerWidget {
                     registry.execute('editor.format');
                   });
                 }
-                if (index == _symbols.length + 4) {
+                if (index == 4) {
+                  return _buildButton('🔍', () {
+                    final registry = ref.read(commandServiceProvider);
+                    registry.execute('editor.find');
+                  });
+                }
+                if (index == _symbols.length + 5) {
                   return const SizedBox(width: 8);
                 }
 
-                final symbol = _symbols[index - 4];
+                final symbol = _symbols[index - 5];
                 return _buildButton(symbol, () => _insertText(symbol));
               },
             ),

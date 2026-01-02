@@ -62,11 +62,68 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
                   const Icon(Icons.call_split, size: 16, color: Colors.grey),
                   const SizedBox(width: 4),
                   Expanded(
-                    child: Text(
-                      branchAsync.asData?.value ?? '...',
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
+                    child: Consumer(
+                      builder: (context, ref, _) {
+                        final branchList = ref.watch(gitBranchListProvider);
+                        final currentBranch = branchAsync.asData?.value ?? '';
+
+                        return PopupMenuButton<String>(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  currentBranch.isEmpty ? '...' : currentBranch,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const Icon(Icons.arrow_drop_down, size: 16),
+                            ],
+                          ),
+                          onSelected: (branch) async {
+                            if (branch == '__new__') {
+                              _showNewBranchDialog(currentDir);
+                            } else {
+                              await _checkout(currentDir, branch);
+                            }
+                          },
+                          itemBuilder: (context) {
+                            final branches = branchList.asData?.value ?? [];
+                            return [
+                              ...branches.map((b) => PopupMenuItem(
+                                    value: b,
+                                    child: Row(
+                                      children: [
+                                        if (b == currentBranch)
+                                          const Icon(Icons.check,
+                                              size: 14, color: Colors.green)
+                                        else
+                                          const SizedBox(width: 14),
+                                        const SizedBox(width: 8),
+                                        Text(b),
+                                      ],
+                                    ),
+                                  )),
+                              const PopupMenuDivider(),
+                              const PopupMenuItem(
+                                value: '__new__',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.add,
+                                        size: 14, color: Color(0xFF89B4FA)),
+                                    SizedBox(width: 8),
+                                    Text('New Branch...'),
+                                  ],
+                                ),
+                              ),
+                            ];
+                          },
+                        );
+                      },
                     ),
                   ),
                   IconButton(
@@ -183,6 +240,78 @@ class _GitWidgetState extends ConsumerState<GitWidget> {
     } catch (e) {
       scaffold.showSnackBar(SnackBar(content: Text('Error: $e')));
     }
+  }
+
+  Future<void> _checkout(String path, String branch) async {
+    final scaffold = ScaffoldMessenger.of(context);
+    scaffold.showSnackBar(SnackBar(content: Text('Switching to $branch...')));
+    try {
+      final result = await ref.read(gitServiceProvider).checkout(path, branch);
+      scaffold.hideCurrentSnackBar();
+      if (result.success) {
+        scaffold.showSnackBar(SnackBar(content: Text('Now on $branch')));
+      } else {
+        scaffold.showSnackBar(
+            SnackBar(content: Text('Checkout Failed: ${result.stderr}')));
+      }
+      ref.invalidate(gitBranchProvider);
+      ref.invalidate(gitBranchListProvider);
+      ref.invalidate(gitStatusProvider);
+    } catch (e) {
+      scaffold.showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  void _showNewBranchDialog(String path) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create New Branch'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Branch Name',
+            hintText: 'e.g. feature/new-feature',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isEmpty) return;
+              Navigator.pop(context);
+
+              final scaffold = ScaffoldMessenger.of(this.context);
+              scaffold.showSnackBar(
+                  SnackBar(content: Text('Creating branch $name...')));
+
+              try {
+                final result =
+                    await ref.read(gitServiceProvider).createBranch(path, name);
+                scaffold.hideCurrentSnackBar();
+                if (result.success) {
+                  scaffold.showSnackBar(
+                      SnackBar(content: Text('Now on branch $name')));
+                } else {
+                  scaffold.showSnackBar(SnackBar(
+                      content: Text('Create Failed: ${result.stderr}')));
+                }
+                ref.invalidate(gitBranchProvider);
+                ref.invalidate(gitBranchListProvider);
+              } catch (e) {
+                scaffold.showSnackBar(SnackBar(content: Text('Error: $e')));
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildEmptyState(String currentDir) {

@@ -76,6 +76,30 @@ class GitService {
     return result.success ? result.stdout : '';
   }
 
+  /// List all local branches
+  Future<List<String>> listBranches(String path) async {
+    final result = await _exec(
+      'cd "$path" && git branch --format="%(refname:short)"',
+    );
+    if (!result.success) return [];
+
+    return result.stdout
+        .split('\n')
+        .map((b) => b.trim())
+        .where((b) => b.isNotEmpty)
+        .toList();
+  }
+
+  /// Checkout to a branch
+  Future<SSHExecResult> checkout(String path, String branch) async {
+    return await _exec('cd "$path" && git checkout "$branch"');
+  }
+
+  /// Create and checkout a new branch
+  Future<SSHExecResult> createBranch(String path, String branchName) async {
+    return await _exec('cd "$path" && git checkout -b "$branchName"');
+  }
+
   // Initialize new repo
   Future<bool> init(String path) async {
     final result = await _exec(
@@ -241,4 +265,17 @@ final gitBranchProvider = FutureProvider.autoDispose<String>((ref) async {
   if (path == null) return '';
   final service = ref.watch(gitServiceProvider);
   return service.getCurrentBranch(path);
+});
+
+final gitBranchListProvider =
+    FutureProvider.autoDispose<List<String>>((ref) async {
+  final path = ref.watch(projectPathProvider);
+  if (path == null) return [];
+  final service = ref.watch(gitServiceProvider);
+  try {
+    if (!await service.isGitRepository(path)) return [];
+    return service.listBranches(path);
+  } catch (e) {
+    return [];
+  }
 });

@@ -14,6 +14,8 @@ class FormatRequest extends EditorRequest {
   FormatRequest(this.filePath);
 }
 
+class FindReplaceRequest extends EditorRequest {}
+
 class EditorRequestNotifier extends Notifier<EditorRequest?> {
   @override
   EditorRequest? build() {

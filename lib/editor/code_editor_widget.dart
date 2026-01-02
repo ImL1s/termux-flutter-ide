@@ -26,6 +26,7 @@ import 'completion/completion_service.dart';
 import 'package:termux_flutter_ide/run/breakpoint_service.dart';
 import '../services/lsp_service.dart';
 import 'diagnostics_provider.dart';
+import 'find_replace_bar.dart';
 
 class CodeEditorWidget extends ConsumerStatefulWidget {
   const CodeEditorWidget({super.key});
@@ -41,6 +42,7 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
   String? _error;
   Timer? _autoSaveTimer;
   final FocusNode _focusNode = FocusNode();
+  bool _showFindReplace = false;
 
   @override
   void dispose() {
@@ -136,6 +138,10 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
             _formatDocument();
           }
         }
+      } else if (next is FindReplaceRequest) {
+        if (_controller != null) {
+          setState(() => _showFindReplace = true);
+        }
       }
     });
 
@@ -185,6 +191,12 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
 
     return Column(
       children: [
+        // Find/Replace Bar
+        if (_showFindReplace && _controller != null)
+          FindReplaceBar(
+            controller: _controller!,
+            onClose: () => setState(() => _showFindReplace = false),
+          ),
         Expanded(
           child: Container(
             color: const Color(0xFF1E1E2E),

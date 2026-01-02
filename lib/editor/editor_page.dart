@@ -164,6 +164,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         action: _formatDocument,
       ),
     );
+
+    registry.register(
+      Command(
+        id: 'editor.find',
+        title: 'Find in File',
+        category: 'Editor',
+        icon: Icons.search,
+        action: _openFindReplace,
+      ),
+    );
   }
 
   @override
@@ -189,22 +199,10 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         const SingleActivator(LogicalKeyboardKey.keyP, meta: true): () =>
             showCommandPalette(context, ref),
         const SingleActivator(LogicalKeyboardKey.keyF, control: true): () {
-          if (isMobile) {
-            _showSearchMobile();
-          } else {
-            ref
-                .read(selectedActivityProvider.notifier)
-                .select(ActivityItem.search);
-          }
+          _openFindReplace();
         },
         const SingleActivator(LogicalKeyboardKey.keyF, meta: true): () {
-          if (isMobile) {
-            _showSearchMobile();
-          } else {
-            ref
-                .read(selectedActivityProvider.notifier)
-                .select(ActivityItem.search);
-          }
+          _openFindReplace();
         },
       },
       child: Focus(
@@ -855,6 +853,10 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     ref
         .read(editorRequestProvider.notifier)
         .request(FormatRequest(currentFile));
+  }
+
+  void _openFindReplace() {
+    ref.read(editorRequestProvider.notifier).request(FindReplaceRequest());
   }
 
   Widget _buildBottomTab(WidgetRef ref, BottomPanelTab tab, String label) {
