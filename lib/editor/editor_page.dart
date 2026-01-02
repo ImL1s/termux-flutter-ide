@@ -30,6 +30,7 @@ import 'problems_view.dart';
 import 'diagnostics_provider.dart';
 import '../services/lsp_service.dart';
 import 'editor_request_provider.dart';
+import 'references_dialog.dart';
 
 enum BottomPanelTab { terminal, problems }
 
@@ -141,6 +142,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         category: 'Editor',
         icon: Icons.search,
         action: _goToDefinition,
+      ),
+    );
+
+    registry.register(
+      Command(
+        id: 'editor.findReferences',
+        title: 'Find References',
+        category: 'Editor',
+        icon: Icons.link,
+        action: _findReferences,
       ),
     );
   }
@@ -812,6 +823,19 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         const SnackBar(content: Text('No definition found')),
       );
     }
+  }
+
+  void _findReferences() async {
+    final currentFile = ref.read(currentFileProvider);
+    final position = ref.read(cursorPositionProvider);
+    if (currentFile == null || position == null) return;
+
+    final lsp = ref.read(lspServiceProvider);
+    final references =
+        await lsp.getReferences(currentFile, position.line, position.column);
+
+    if (!mounted) return;
+    showReferencesDialog(context, ref, references, 'Symbol');
   }
 
   Widget _buildBottomTab(WidgetRef ref, BottomPanelTab tab, String label) {

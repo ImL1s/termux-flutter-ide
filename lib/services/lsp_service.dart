@@ -217,6 +217,24 @@ class LspService {
     return null;
   }
 
+  Future<List<Map<String, dynamic>>> getReferences(
+      String filePath, int line, int column) async {
+    final uri = 'file://$filePath';
+    final response = await sendRequest('textDocument/references', {
+      'textDocument': {'uri': uri},
+      'position': {'line': line, 'character': column},
+      'context': {'includeDeclaration': true},
+    });
+
+    if (response.containsKey('result')) {
+      final result = response['result'];
+      if (result is List) {
+        return result.cast<Map<String, dynamic>>();
+      }
+    }
+    return [];
+  }
+
   Future<List<Map<String, dynamic>>> getCompletions(
       String filePath, int line, int column) async {
     final uri = 'file://$filePath';

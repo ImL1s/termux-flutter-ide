@@ -87,11 +87,17 @@ class CodingToolbar extends ConsumerWidget {
                     registry.execute('editor.goToDefinition');
                   });
                 }
-                if (index == _symbols.length + 2) {
+                if (index == 2) {
+                  return _buildButton('Ref', () {
+                    final registry = ref.read(commandServiceProvider);
+                    registry.execute('editor.findReferences');
+                  });
+                }
+                if (index == _symbols.length + 3) {
                   return const SizedBox(width: 8);
                 }
 
-                final symbol = _symbols[index - 2];
+                final symbol = _symbols[index - 3];
                 return _buildButton(symbol, () => _insertText(symbol));
               },
             ),
