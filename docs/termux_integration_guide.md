@@ -12,29 +12,29 @@ Termux uses `apt` and `dpkg` but provides a wrapper `pkg` which should be used f
 ### Critical Dependencies
 The following packages are **mandatory** for the IDE's SSH functionality:
 - `openssh`: Provides `sshd` server and `ssh` client.
-- `busybox`: Provides critical utilities missing from Android/Termux default shell (like `chpasswd`).
-- `termux-auth`: Provides password authentication mechanisms.
 
 ## 2. SSH Authentication Bootstrap
-To enable SSH connections programmatically without user interaction (non-interactive login), we must set a password.
+To enable SSH connections, you must set a password in Termux.
 
 ### Problem: Interactive `passwd`
-The standard `passwd` command is interactive and requires TTY, which Intention-based command execution does not provide.
+The standard `passwd` command is interactive and requires TTY.
 
-### Solution: `busybox chpasswd`
-`chpasswd` allows setting passwords via STDIN in batch mode.
-**Note**: `chpasswd` is NOT installed by default. It must be accessed via `busybox`.
+### Solution: Manual Password Setup
+Since `busybox chpasswd` is **NOT available** in modern Termux, users must set their password manually.
 
-**Correct Bootstrap Command**:
+**Setup Steps**:
 ```bash
-pkg install -y openssh busybox termux-auth && \
-echo "$(whoami):termux" | busybox chpasswd && \
+# Step 1: Install openssh
+pkg install -y openssh
+
+# Step 2: Set your password (type 'termux' when prompted)
+passwd
+
+# Step 3: Start sshd
 sshd
 ```
 
-- Installs `openssh` (server), `busybox` (utils), `termux-auth` (auth system).
-- Pipes `username:password` to `busybox chpasswd`.
-- Starts `sshd`.
+The IDE expects the password to be `termux` by default.
 
 ## 3. Command Execution
 Termux commands are executed via Android Intents (`RunCommandService`).
@@ -52,9 +52,9 @@ Termux commands are executed via Android Intents (`RunCommandService`).
 
 ## 5. Troubleshooting
 If `SSHAuthFailError` occurs:
-1. **Check Packages**: Ensure `busybox` and `termux-auth` are installed.
-2. **Check Password**: Manually run `echo "$(whoami):termux" | busybox chpasswd`.
-3. **Restart Service**: `pkill sshd; sshd`.
+1. **Check OpenSSH**: Run `pkg install openssh` in Termux.
+2. **Set Password**: Run `passwd` in Termux and enter `termux` as the password.
+3. **Restart SSHD**: Run `pkill sshd; sshd`.
 
 ## 6. Storage Access & Permissions
 Termux runs in a sandboxed environment. To access shared storage (like `/sdcard`), explicit permission must be granted.

@@ -15,8 +15,7 @@ class SSHErrorDialog extends ConsumerWidget {
     required this.errorMessage,
   });
 
-  static const String _fixCommand =
-      'pkg install -y busybox termux-auth && echo "\$(whoami):termux" | busybox chpasswd && sshd';
+  static const String _fixCommand = 'pkg install -y openssh && passwd && sshd';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

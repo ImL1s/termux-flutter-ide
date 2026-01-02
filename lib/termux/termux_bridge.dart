@@ -127,20 +127,18 @@ class TermuxBridge {
   /// 注意：這裡為了無人值守，使用 chpasswd 設定預設密碼。
   /// chpasswd 可以透過 stdin 設定密碼，不需要 TTY。
   ///
-  /// MVP 策略：設定 user 密碼為 'termux'
+  /// MVP 策略：啟動 SSHD (需要用戶先手動設定密碼)
   Future<TermuxResult> setupTermuxSSH() {
     // 1. Acquire WakeLock
     // 2. Install OpenSSH if not present
-    // 3. Set password using chpasswd (works without TTY)
+    // 3. Generate SSH keys if needed
     // 4. Start SSHD
     //
-    // chpasswd reads username:password from stdin
-    // We get the current username from whoami
+    // NOTE: User must set password manually with `passwd` before connecting
     const cmd = 'export PATH=/data/data/com.termux/files/usr/bin:\$PATH; '
         'termux-wake-lock; '
-        'pkg install -y openssh busybox termux-auth > /dev/null 2>&1 || true; '
+        'pkg install -y openssh > /dev/null 2>&1 || true; '
         'ssh-keygen -A 2>/dev/null || true; '
-        'USER=\$(whoami); echo "\$USER:termux" | busybox chpasswd 2>/dev/null || echo "\$USER:termux" | chpasswd 2>/dev/null || true; '
         'sshd 2>/dev/null || pkill sshd; sleep 1; sshd';
     return executeCommand(cmd, background: false);
   }
