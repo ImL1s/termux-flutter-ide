@@ -4,6 +4,7 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../termux/ssh_service.dart';
 import '../editor/diagnostics_provider.dart';
+import '../termux/termux_paths.dart';
 
 class LspService {
   final Ref ref;
@@ -31,14 +32,9 @@ class LspService {
     if (!ssh.isConnected) return false;
     _client = ssh.client;
 
-    // Detect Dart path or use hardcoded from PoC
-    const dartPath =
-        '/data/data/com.termux/files/usr/opt/flutter/bin/cache/dart-sdk/bin/dart';
-    const snapshotPath =
-        '/data/data/com.termux/files/usr/opt/flutter/bin/cache/dart-sdk/bin/snapshots/analysis_server.dart.snapshot';
-
     try {
-      _session = await _client!.execute('$dartPath $snapshotPath --lsp');
+      _session = await _client!.execute(
+          '${TermuxPaths.dartExecutable} ${TermuxPaths.analysisServerSnapshot} --lsp');
       _isStarted = true;
     } catch (e) {
       print('LSP Start Error: $e');
@@ -51,8 +47,8 @@ class LspService {
     // Send initialize
     await sendRequest('initialize', {
       'processId': null,
-      'rootPath': '/data/data/com.termux/files/home',
-      'rootUri': 'file:///data/data/com.termux/files/home',
+      'rootPath': TermuxPaths.home,
+      'rootUri': 'file://${TermuxPaths.home}',
       'capabilities': {
         'textDocument': {
           'completion': {

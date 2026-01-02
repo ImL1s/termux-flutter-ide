@@ -3,6 +3,7 @@ import 'package:yaml_edit/yaml_edit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
 import '../termux/ssh_service.dart';
+import '../termux/termux_paths.dart';
 
 class PubspecService {
   final Ref ref;
@@ -42,7 +43,7 @@ class PubspecService {
       // We can use terminalCommandProvider to show it in terminal
       ref
           .read(terminalCommandProvider.notifier)
-          .run('cd $projectPath && flutter pub get');
+          .run('cd $projectPath && ${TermuxPaths.flutterExecutable} pub get');
     }
   }
 }

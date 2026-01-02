@@ -156,7 +156,7 @@ class TermuxBridge {
   /// 不需要 SSH 連線就能安裝 Flutter。
   Future<TermuxResult> installFlutter() {
     const installScript =
-        'https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/main/install_termux_flutter.sh';
+        'https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_termux_flutter.sh';
     const cmd =
         'termux-wake-lock; curl -sL $installScript | bash; termux-wake-unlock';
     return executeCommand(cmd, background: false);
