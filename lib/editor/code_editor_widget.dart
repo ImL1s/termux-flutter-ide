@@ -215,6 +215,17 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
                         fontFamily: 'JetBrains Mono',
                         fontSize: fontSize,
                       ),
+                      gutterStyle: GutterStyle(
+                        showFoldingHandles: true,
+                        showLineNumbers: true,
+                        showErrors: false, // We use our own diagnostic layer
+                        textStyle: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: fontSize * 0.75,
+                          color: Colors.grey[600],
+                        ),
+                        background: const Color(0xFF1E1E2E),
+                      ),
                     ),
                   ),
                   // Breakpoint Interaction Layer

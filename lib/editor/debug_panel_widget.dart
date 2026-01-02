@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vm_service/vm_service.dart' as vm;
 import 'package:termux_flutter_ide/run/vm_service_manager.dart';
 import 'package:termux_flutter_ide/run/breakpoint_service.dart';
+import 'package:termux_flutter_ide/run/watch_expressions_provider.dart';
 
 class DebugPanelWidget extends ConsumerWidget {
   const DebugPanelWidget({super.key});
@@ -38,18 +39,16 @@ class _MobileDebugPanel extends StatelessWidget {
     // The "Floating Toolbar" part needs to be in CodeEditorWidget or a parent Stack,
     // but here we define the content of the "Panel" itself.
 
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // On Mobile, Controls might be floating, but if we are IN the panel (Drawer),
-        // we might still want them or hide them?
-        // Plan says: "Floating Toolbar: ... in editor bottom-center".
-        // So this Panel (Bottom Sheet/Drawer) mainly holds Data.
-        // Let's keep controls here for now as a fallback or duplication until Floating is implemented.
+      children: const [
         DebugControls(),
         Divider(height: 1, color: Color(0xFF313244)),
         _Header(title: 'VARIABLES'),
         Expanded(flex: 2, child: _VariablesList()),
+        Divider(height: 1, color: Color(0xFF313244)),
+        _Header(title: 'WATCH'),
+        Expanded(flex: 1, child: _WatchList()),
         Divider(height: 1, color: Color(0xFF313244)),
         _Header(title: 'CALL STACK'),
         Expanded(flex: 1, child: _CallStackList()),
@@ -372,6 +371,147 @@ class _BreakpointsList extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Watch Expressions List Widget
+class _WatchList extends ConsumerWidget {
+  const _WatchList();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final watches = ref.watch(watchExpressionsProvider);
+
+    if (watches.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'No watch expressions',
+              style: TextStyle(color: Color(0xFF585B70), fontSize: 11),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF313244),
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              ),
+              icon: const Icon(Icons.add, size: 14),
+              label: const Text('Add Watch', style: TextStyle(fontSize: 11)),
+              onPressed: () => _showAddWatchDialog(context, ref),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            itemCount: watches.length,
+            itemBuilder: (context, index) {
+              final watch = watches[index];
+              return Dismissible(
+                key: ValueKey(watch.expression),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  color: Colors.redAccent,
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 16),
+                  child:
+                      const Icon(Icons.delete, color: Colors.white, size: 16),
+                ),
+                onDismissed: (_) {
+                  ref
+                      .read(watchExpressionsProvider.notifier)
+                      .remove(watch.expression);
+                },
+                child: ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  title: Text(
+                    watch.expression,
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 11,
+                      color: watch.isError ? Colors.redAccent : Colors.white,
+                    ),
+                  ),
+                  subtitle: watch.value != null
+                      ? Text(
+                          watch.value!,
+                          style: TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 10,
+                            color: watch.isError
+                                ? const Color(0xFFF38BA8)
+                                : const Color(0xFF94E2D5),
+                          ),
+                        )
+                      : null,
+                ),
+              );
+            },
+          ),
+        ),
+        // Add button at bottom
+        Padding(
+          padding: const EdgeInsets.all(4),
+          child: TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF89B4FA),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            ),
+            icon: const Icon(Icons.add, size: 12),
+            label: const Text('Add', style: TextStyle(fontSize: 10)),
+            onPressed: () => _showAddWatchDialog(context, ref),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showAddWatchDialog(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2E),
+        title:
+            const Text('Add Watch Expression', style: TextStyle(fontSize: 14)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'e.g., myVariable.length',
+            isDense: true,
+          ),
+          style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                ref
+                    .read(watchExpressionsProvider.notifier)
+                    .add(controller.text);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
     );
   }
 }
