@@ -100,6 +100,27 @@ class GitService {
     return await _exec('cd "$path" && git checkout -b "$branchName"');
   }
 
+  /// Delete a local branch
+  Future<SSHExecResult> deleteBranch(String path, String branchName,
+      {bool force = false}) async {
+    final flag = force ? '-D' : '-d';
+    return await _exec('cd "$path" && git branch $flag "$branchName"');
+  }
+
+  /// List all remote branches
+  Future<List<String>> listRemoteBranches(String path) async {
+    final result = await _exec(
+      'cd "$path" && git branch -r --format="%(refname:short)"',
+    );
+    if (!result.success) return [];
+
+    return result.stdout
+        .split('\n')
+        .map((b) => b.trim())
+        .where((b) => b.isNotEmpty)
+        .toList();
+  }
+
   // Initialize new repo
   Future<bool> init(String path) async {
     final result = await _exec(
