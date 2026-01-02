@@ -630,35 +630,60 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1E1E2E),
       builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.9, // 90% Height
+        height: MediaQuery.of(context).size.height * 0.9,
         child: Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom, // Keyboard
+            bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
-          child: Column(
-            children: [
-              Container(
-                height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    const Icon(Icons.terminal, size: 18, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    const Text('TERMINAL',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.keyboard_arrow_down),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
+          child: DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                Container(
+                  height: 48,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF181825),
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: TabBar(
+                          isScrollable: true,
+                          labelColor: Color(0xFFCBA6F7),
+                          unselectedLabelColor: Colors.grey,
+                          indicatorColor: Color(0xFFCBA6F7),
+                          tabs: [
+                            Tab(
+                                text: 'TERMINAL',
+                                icon: Icon(Icons.terminal, size: 16)),
+                            Tab(
+                                text: 'PROBLEMS',
+                                icon: Icon(Icons.error_outline, size: 16)),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.keyboard_arrow_down),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1),
-              const Expanded(child: TerminalWidget()),
-            ],
+                const Divider(height: 1),
+                const Expanded(
+                  child: TabBarView(
+                    children: [
+                      TerminalWidget(),
+                      ProblemsView(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ), // Close Padding
+        ),
       ),
     );
   }
