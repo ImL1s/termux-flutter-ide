@@ -70,5 +70,17 @@ void main() {
     await tester.tap(find.byIcon(Icons.pause));
     await tester.pump();
     expect(find.byIcon(Icons.vertical_align_bottom), findsOneWidget);
+
+    // Close the Terminal modal to return to main screen
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+    await tester.pumpAndSettle();
+
+    // 6. Phase 10: Git Branch Management - Verify Drawer access
+    // Open the drawer to access Git functionality
+    await tester.tap(find.byKey(const Key('main_drawer_button')));
+    await tester.pumpAndSettle();
+
+    // Verify Source Control option exists in drawer
+    expect(find.text('Source Control'), findsOneWidget);
   });
 }

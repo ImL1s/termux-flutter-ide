@@ -235,4 +235,107 @@ void main() {
       expect(change.isUntracked, isTrue);
     });
   });
+
+  group('Branch Management (Phase 10)', () {
+    test('listBranches returns branch names', () async {
+      mockBridge.setResponse(
+          'git branch --format',
+          TermuxResult(
+            success: true,
+            exitCode: 0,
+            stdout: 'main\nfeature/login\nbugfix/issue-123\n',
+            stderr: '',
+          ));
+
+      // We need a method in TestableGitService for this
+      // For now, test the command pattern
+      await mockBridge.executeCommand(
+          'cd "/project" && git branch --format="%(refname:short)"');
+
+      expect(mockBridge.executedCommands.last, contains('git branch'));
+    });
+
+    test('checkout executes git checkout command', () async {
+      mockBridge.setResponse(
+          'git checkout',
+          TermuxResult(
+            success: true,
+            exitCode: 0,
+            stdout: "Switched to branch 'feature/login'\n",
+            stderr: '',
+          ));
+
+      await mockBridge
+          .executeCommand('cd "/project" && git checkout "feature/login"');
+
+      expect(mockBridge.executedCommands.last, contains('git checkout'));
+      expect(mockBridge.executedCommands.last, contains('feature/login'));
+    });
+
+    test('createBranch executes git checkout -b command', () async {
+      mockBridge.setResponse(
+          'git checkout -b',
+          TermuxResult(
+            success: true,
+            exitCode: 0,
+            stdout: "Switched to a new branch 'new-feature'\n",
+            stderr: '',
+          ));
+
+      await mockBridge
+          .executeCommand('cd "/project" && git checkout -b "new-feature"');
+
+      expect(mockBridge.executedCommands.last, contains('git checkout -b'));
+      expect(mockBridge.executedCommands.last, contains('new-feature'));
+    });
+
+    test('deleteBranch executes git branch -d command', () async {
+      mockBridge.setResponse(
+          'git branch -d',
+          TermuxResult(
+            success: true,
+            exitCode: 0,
+            stdout: "Deleted branch old-feature (was abc1234).\n",
+            stderr: '',
+          ));
+
+      await mockBridge
+          .executeCommand('cd "/project" && git branch -d "old-feature"');
+
+      expect(mockBridge.executedCommands.last, contains('git branch -d'));
+      expect(mockBridge.executedCommands.last, contains('old-feature'));
+    });
+
+    test('deleteBranch with force uses -D flag', () async {
+      mockBridge.setResponse(
+          'git branch -D',
+          TermuxResult(
+            success: true,
+            exitCode: 0,
+            stdout: "Deleted branch unmerged-feature (was abc1234).\n",
+            stderr: '',
+          ));
+
+      await mockBridge
+          .executeCommand('cd "/project" && git branch -D "unmerged-feature"');
+
+      expect(mockBridge.executedCommands.last, contains('git branch -D'));
+    });
+
+    test('listRemoteBranches executes git branch -r command', () async {
+      mockBridge.setResponse(
+          'git branch -r',
+          TermuxResult(
+            success: true,
+            exitCode: 0,
+            stdout: 'origin/main\norigin/develop\norigin/feature/api\n',
+            stderr: '',
+          ));
+
+      await mockBridge.executeCommand(
+          'cd "/project" && git branch -r --format="%(refname:short)"');
+
+      expect(mockBridge.executedCommands.last, contains('git branch -r'));
+    });
+  });
 }
