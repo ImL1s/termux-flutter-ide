@@ -13,19 +13,26 @@ void main() {
   testWidgets('E2E: Editor Edit and Run flow', (tester) async {
     final projectPath = '/home/test_project';
     final testFile = FileItem(
-        name: 'main.dart',
-        path: '$projectPath/lib/main.dart',
-        isDirectory: false);
+      name: 'main.dart',
+      path: '$projectPath/lib/main.dart',
+      isDirectory: false,
+    );
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          projectPathProvider.overrideWithValue(projectPath),
+          projectPathProvider.overrideWith(
+            () => TestProjectPathNotifier(projectPath),
+          ),
           // Mock file reading
           fileOperationsProvider.overrideWithValue(MockFileOps()),
           // Open the test file by default
-          openFilesProvider.overrideWithValue([testFile.path]),
-          currentFileProvider.overrideWithValue(testFile.path),
+          openFilesProvider.overrideWith(
+            () => TestOpenFilesNotifier([testFile.path]),
+          ),
+          currentFileProvider.overrideWith(
+            () => TestCurrentFileNotifier(testFile.path),
+          ),
         ],
         child: const MaterialApp(home: EditorPage()),
       ),
@@ -58,4 +65,25 @@ class MockFileOps extends Fake implements FileOperations {
       "void main() { print('hello'); }";
   @override
   Future<bool> writeFile(String path, String content) async => true;
+}
+
+class TestProjectPathNotifier extends ProjectPathNotifier {
+  final String? initial;
+  TestProjectPathNotifier(this.initial);
+  @override
+  String? build() => initial;
+}
+
+class TestOpenFilesNotifier extends OpenFilesNotifier {
+  final List<String> initial;
+  TestOpenFilesNotifier(this.initial);
+  @override
+  List<String> build() => initial;
+}
+
+class TestCurrentFileNotifier extends CurrentFileNotifier {
+  final String? initial;
+  TestCurrentFileNotifier(this.initial);
+  @override
+  String? build() => initial;
 }

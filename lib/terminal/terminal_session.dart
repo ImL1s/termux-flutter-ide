@@ -6,12 +6,7 @@ import 'package:xterm/xterm.dart';
 import 'package:dartssh2/dartssh2.dart';
 import '../termux/termux_providers.dart';
 
-enum SessionState {
-  connecting,
-  connected,
-  disconnected,
-  failed,
-}
+enum SessionState { connecting, connected, disconnected, failed }
 
 class TerminalSession {
   final String id;
@@ -26,7 +21,7 @@ class TerminalSession {
   String _receivedBuffer = '';
   final List<String> _logHistory = [];
   String? _filter;
-  String _partialLine = '';
+  final String _partialLine = '';
   final List<String> _pendingCommands = [];
 
   // Data stream for log interception
@@ -123,12 +118,9 @@ class TerminalSession {
     _dataController.add(data);
   }
 
-  TerminalSession({
-    required this.id,
-    required this.name,
-    this.initialDirectory,
-  })  : terminal = Terminal(maxLines: 10000),
-        controller = TerminalController();
+  TerminalSession({required this.id, required this.name, this.initialDirectory})
+    : terminal = Terminal(maxLines: 10000),
+      controller = TerminalController();
 
   final TerminalController controller;
 
@@ -144,10 +136,7 @@ class TerminalSessionsState {
   final List<TerminalSession> sessions;
   final String? activeSessionId;
 
-  TerminalSessionsState({
-    this.sessions = const [],
-    this.activeSessionId,
-  });
+  TerminalSessionsState({this.sessions = const [], this.activeSessionId});
 
   TerminalSession? get activeSession {
     if (activeSessionId == null) return null;
@@ -208,10 +197,7 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
       newActiveId = newSessions.isNotEmpty ? newSessions.last.id : null;
     }
 
-    state = state.copyWith(
-      sessions: newSessions,
-      activeSessionId: newActiveId,
-    );
+    state = state.copyWith(sessions: newSessions, activeSessionId: newActiveId);
   }
 
   Future<void> connectSession(TerminalSession session) async {
@@ -220,12 +206,15 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
 
     // Small delay to ensure UI is ready to show the terminal
     await Future.delayed(const Duration(milliseconds: 100));
-    session
-        .onDataReceived('\x1B[1;36mConnecting to Termux via SSH...\x1B[0m\r\n');
+    session.onDataReceived(
+      '\x1B[1;36mConnecting to Termux via SSH...\x1B[0m\r\n',
+    );
 
     try {
-      final socket = await SSHSocket.connect('127.0.0.1', 8022)
-          .timeout(const Duration(seconds: 3));
+      final socket = await SSHSocket.connect(
+        '127.0.0.1',
+        8022,
+      ).timeout(const Duration(seconds: 3));
 
       session.onDataReceived('Connected! Authenticating...\r\n');
 
@@ -244,23 +233,22 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
       );
       session.client = client;
 
-      final width =
-          session.terminal.viewWidth > 0 ? session.terminal.viewWidth : 80;
-      final height =
-          session.terminal.viewHeight > 0 ? session.terminal.viewHeight : 24;
+      final width = session.terminal.viewWidth > 0
+          ? session.terminal.viewWidth
+          : 80;
+      final height = session.terminal.viewHeight > 0
+          ? session.terminal.viewHeight
+          : 24;
 
       final shell = await client.shell(
-        pty: SSHPtyConfig(
-          width: width,
-          height: height,
-          type: 'xterm-256color',
-        ),
+        pty: SSHPtyConfig(width: width, height: height, type: 'xterm-256color'),
       );
       session.shell = shell;
       // Note: state remains .connecting during initial setup (cd)
 
       session.onDataReceived(
-          '\x1B[32m✔ Connected to Termux\x1B[0m\r\n'); // Listen for data
+        '\x1B[32m✔ Connected to Termux\x1B[0m\r\n',
+      ); // Listen for data
 
       shell.stdout.listen((data) {
         session.onDataReceived(utf8.decode(data, allowMalformed: true));
@@ -292,8 +280,9 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
 
       // 4. Send initial working directory if set
       if (session.initialDirectory != null) {
-        shell.write(Uint8List.fromList(
-            utf8.encode('cd "${session.initialDirectory}"\n')));
+        shell.write(
+          Uint8List.fromList(utf8.encode('cd "${session.initialDirectory}"\n')),
+        );
       }
 
       // 5. Flush any commands sent while connecting
@@ -313,5 +302,5 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
 
 final terminalSessionsProvider =
     NotifierProvider<TerminalSessionNotifier, TerminalSessionsState>(
-  TerminalSessionNotifier.new,
-);
+      TerminalSessionNotifier.new,
+    );

@@ -20,10 +20,12 @@ class SSHErrorDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Determine error type
-    final isAuthError = errorMessage.contains('SSHAuthFailError') ||
+    final isAuthError =
+        errorMessage.contains('SSHAuthFailError') ||
         errorMessage.contains('authentication');
     final isConnectionRefused = errorMessage.contains('Connection refused');
-    final isNetworkError = errorMessage.contains('Network is unreachable') ||
+    final isNetworkError =
+        errorMessage.contains('Network is unreachable') ||
         errorMessage.contains('No route to host');
 
     String titleText = 'SSH 連線失敗';
@@ -167,9 +169,9 @@ class SSHErrorDialog extends ConsumerWidget {
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withAlpha(25),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                border: Border.all(color: Colors.red.withAlpha(76)),
               ),
               child: SelectableText(
                 errorMessage,
@@ -189,9 +191,7 @@ class SSHErrorDialog extends ConsumerWidget {
             const SizedBox(height: 16),
 
             // Steps
-            ...steps
-                .expand((step) => [step, const SizedBox(height: 12)])
-                .toList(),
+            ...steps.expand((step) => [step, const SizedBox(height: 12)]),
 
             const SizedBox(height: 8),
           ],
@@ -284,10 +284,7 @@ class SSHErrorDialog extends ConsumerWidget {
               const SizedBox(height: 4),
               Text(
                 description,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
             ],
           ),
