@@ -7,6 +7,7 @@ import '../termux/termux_providers.dart';
 import '../core/providers.dart';
 import 'terminal_session.dart';
 import 'terminal_quick_commands.dart';
+import '../core/scrollable_with_scrollbar.dart';
 
 /// Auto-scroll toggle for terminal output
 final _autoScrollProvider = StateProvider<bool>((ref) => true);
@@ -19,6 +20,8 @@ class TerminalWidget extends ConsumerStatefulWidget {
 }
 
 class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
+  final ScrollController _tabBarScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -26,6 +29,12 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureSession();
     });
+  }
+
+  @override
+  void dispose() {
+    _tabBarScrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _ensureSession() async {
@@ -52,12 +61,7 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
   void _sendCommand(String cmd) {
     final activeSession = ref.read(terminalSessionsProvider).activeSession;
     if (activeSession != null) {
-      print(
-          'TerminalWidget: Sending command to session ${activeSession.id}: "$cmd"');
       activeSession.write('$cmd\n');
-    } else {
-      print(
-          'TerminalWidget: Warning - No active session to send command: "$cmd"');
     }
   }
 
@@ -110,63 +114,71 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
       child: Row(
         children: [
           Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: state.sessions.length,
-              itemBuilder: (context, index) {
-                final session = state.sessions[index];
-                final isActive = session.id == state.activeSessionId;
+            child: ScrollableWithScrollbar(
+              controller: _tabBarScrollController,
+              axis: Axis.horizontal,
+              child: ListView.builder(
+                controller: _tabBarScrollController,
+                scrollDirection: Axis.horizontal,
+                itemCount: state.sessions.length,
+                itemBuilder: (context, index) {
+                  final session = state.sessions[index];
+                  final isActive = session.id == state.activeSessionId;
 
-                return GestureDetector(
-                  onTap: () => ref
-                      .read(terminalSessionsProvider.notifier)
-                      .selectSession(session.id),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: isActive ? AppTheme.editorBg : Colors.transparent,
-                      border: Border(
-                        right: const BorderSide(color: AppTheme.surfaceVariant),
-                        bottom: BorderSide(
-                          color: isActive
-                              ? AppTheme.secondary
-                              : Colors.transparent,
-                          width: 2,
+                  return GestureDetector(
+                    onTap: () => ref
+                        .read(terminalSessionsProvider.notifier)
+                        .selectSession(session.id),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color:
+                            isActive ? AppTheme.editorBg : Colors.transparent,
+                        border: Border(
+                          right:
+                              const BorderSide(color: AppTheme.surfaceVariant),
+                          bottom: BorderSide(
+                            color: isActive
+                                ? AppTheme.secondary
+                                : Colors.transparent,
+                            width: 2,
+                          ),
                         ),
                       ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          isActive ? Icons.terminal : Icons.terminal_outlined,
-                          size: 14,
-                          color: isActive ? AppTheme.secondary : Colors.grey,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          session.name,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isActive ? Colors.white : Colors.grey,
-                            fontWeight:
-                                isActive ? FontWeight.bold : FontWeight.normal,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isActive ? Icons.terminal : Icons.terminal_outlined,
+                            size: 14,
+                            color: isActive ? AppTheme.secondary : Colors.grey,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (isActive && state.sessions.length > 1)
-                          GestureDetector(
-                            onTap: () => ref
-                                .read(terminalSessionsProvider.notifier)
-                                .closeSession(session.id),
-                            child: const Icon(Icons.close,
-                                size: 14, color: Colors.grey),
+                          const SizedBox(width: 8),
+                          Text(
+                            session.name,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isActive ? Colors.white : Colors.grey,
+                              fontWeight: isActive
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
                           ),
-                      ],
+                          const SizedBox(width: 8),
+                          if (isActive && state.sessions.length > 1)
+                            GestureDetector(
+                              onTap: () => ref
+                                  .read(terminalSessionsProvider.notifier)
+                                  .closeSession(session.id),
+                              child: const Icon(Icons.close,
+                                  size: 14, color: Colors.grey),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
           // Auto-Scroll Toggle
@@ -187,8 +199,12 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
           ),
           IconButton(
             icon: const Icon(Icons.add, size: 20),
-            onPressed: () =>
-                ref.read(terminalSessionsProvider.notifier).createSession(),
+            onPressed: () {
+              final projectPath = ref.read(projectPathProvider);
+              ref
+                  .read(terminalSessionsProvider.notifier)
+                  .createSession(initialDirectory: projectPath);
+            },
             tooltip: 'New Session',
           ),
         ],
@@ -199,13 +215,19 @@ class _TerminalWidgetState extends ConsumerState<TerminalWidget> {
   Widget _buildSessionView(TerminalSession session) {
     return Stack(
       children: [
-        TerminalView(
-          session.terminal,
-          controller: session.controller,
-          autofocus: true,
-          backgroundOpacity: 0,
-          textStyle: const TerminalStyle(
-            fontSize: 13,
+        Padding(
+          padding:
+              const EdgeInsets.all(8.0), // Add padding for better readability
+          child: TerminalView(
+            session.terminal,
+            controller: session.controller,
+            autofocus: true,
+            backgroundOpacity: 0,
+            cursorType: TerminalCursorType.verticalBar,
+            textStyle: const TerminalStyle(
+              fontSize: 13,
+              fontFamily: 'monospace',
+            ),
           ),
         ),
         if (session.state == SessionState.connecting)

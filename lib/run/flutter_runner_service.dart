@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:android_intent_plus/android_intent.dart';
@@ -8,10 +6,9 @@ import 'package:android_intent_plus/flag.dart'; // Import Flag
 import 'launch_config.dart';
 import 'runner_actions.dart'; // Import RunnerAction
 import '../terminal/terminal_session.dart';
-import '../termux/ssh_service.dart';
+import '../termux/termux_bridge.dart';
 import 'vm_service_manager.dart';
 import '../core/providers.dart';
-import '../file_manager/file_operations.dart';
 
 /// Runner State Enum
 enum RunnerState {
@@ -78,14 +75,23 @@ class FlutterRunnerService {
 
   FlutterRunnerService(this._ref);
 
-  /// Check if project is valid Flutter project using SSH
+  /// Check if project is valid Flutter project using TermuxBridge
   Future<bool> isValidFlutterProject() async {
     final projectPath = _ref.read(projectPathProvider);
     if (projectPath == null) return false;
 
-    // Use FileOperations to check remote file existence
-    final fileOps = _ref.read(fileOperationsProvider);
-    return await fileOps.exists('$projectPath/pubspec.yaml');
+    // Use TermuxBridge to check file existence
+    final bridge = TermuxBridge();
+    try {
+      final result = await bridge
+          .executeCommand('[ -f "$projectPath/pubspec.yaml" ] && echo "OK"');
+      print(
+          'isValidFlutterProject: check result for $projectPath/pubspec.yaml: "${result.stdout}"');
+      return result.stdout.trim() == 'OK';
+    } catch (e) {
+      print('isValidFlutterProject: Bridge execute failed: $e');
+      return false;
+    }
   }
 
   /// Main run method with full error handling
@@ -93,6 +99,14 @@ class FlutterRunnerService {
     final stateNotifier = _ref.read(runnerStateProvider.notifier);
     final errorNotifier = _ref.read(runnerErrorProvider.notifier);
     final sessionIdNotifier = _ref.read(activeRunnerSessionIdProvider.notifier);
+
+    // 0. Guard against overlapping runs
+    final currentState = _ref.read(runnerStateProvider);
+    if (currentState == RunnerState.connecting ||
+        currentState == RunnerState.running) {
+      print('FlutterRunnerService: Run already in progress, ignoring request.');
+      return;
+    }
 
     // Clear previous error
     errorNotifier.setError(null);
@@ -106,29 +120,17 @@ class FlutterRunnerService {
     }
 
     // 2. Check if valid Flutter project
-    if (!await isValidFlutterProject()) {
-      stateNotifier.setState(RunnerState.error);
-      errorNotifier.setError('此目錄不是有效的 Flutter 專案 (缺少 pubspec.yaml)');
-      return;
-    }
+    // if (!await isValidFlutterProject()) {
+    //   stateNotifier.setState(RunnerState.error);
+    //   errorNotifier.setError('此目錄不是有效的 Flutter 專案 (缺少 pubspec.yaml)');
+    //   return;
+    // }
 
     // 3. Set connecting state
     stateNotifier.setState(RunnerState.connecting);
     print('FlutterRunnerService: Starting run for ${config.name}');
 
-    // 2.5 Ensure SSH is connected
-    final sshService = _ref.read(sshServiceProvider);
-    if (!sshService.isConnected) {
-      print(
-          'FlutterRunnerService: SSH not connected, attempting to connect...');
-      try {
-        await sshService.connectWithRetry(); // Use retry logic
-      } catch (e) {
-        stateNotifier.setState(RunnerState.error);
-        errorNotifier.setError('無法連線到 Termux (SSH): $e');
-        return;
-      }
-    }
+    // Note: We now use TermuxBridge, no SSH connection needed
 
     try {
       final notifier = _ref.read(terminalSessionsProvider.notifier);
@@ -153,7 +155,7 @@ class FlutterRunnerService {
           '\x1B[1;33m[IDE] 🚀 Starting Runner for ${config.name}...\x1B[0m\r\n');
       session.onDataReceived('\x1B[1;30m[IDE] Project: $workingDir\x1B[0m\r\n');
       session.onDataReceived(
-          '\x1B[1;36m[IDE] Step 1/3: Establishing SSH connection...\x1B[0m\r\n');
+          '\x1B[1;36m[IDE] Step 1/3: Establishing Bridge connection...\x1B[0m\r\n');
 
       // 4. Connect
       await notifier.connectSession(session);
@@ -161,18 +163,18 @@ class FlutterRunnerService {
       // Check if session connected successfully
       if (session.state == SessionState.failed) {
         stateNotifier.setState(RunnerState.error);
-        final err = session.lastError ?? "請確認 Termux 中已執行 sshd";
+        final err = session.lastError ?? "Bridge 連線失敗";
         session.onDataReceived(
-            '\x1B[31m[IDE] ❌ SSH connection failed: $err\x1B[0m\r\n');
-        errorNotifier.setError('SSH 連線失敗: $err');
+            '\x1B[31m[IDE] ❌ Bridge connection failed: $err\x1B[0m\r\n');
+        errorNotifier.setError('Bridge 連線失敗: $err');
         return;
       }
 
-      session.onDataReceived('\x1B[1;32m[IDE] ✔ SSH connected!\x1B[0m\r\n');
+      session.onDataReceived('\x1B[1;32m[IDE] ✔ Bridge connected!\x1B[0m\r\n');
       session.onDataReceived(
           '\x1B[1;36m[IDE] Step 2/3: Validating Flutter project...\x1B[0m\r\n');
 
-      // 5. Validate project (already checked but let's be sure in the terminal)
+      // 5. Validate project
       if (!await isValidFlutterProject()) {
         session.onDataReceived(
             '\x1B[31m[IDE] ❌ Not a valid Flutter project (missing pubspec.yaml)\x1B[0m\r\n');
@@ -198,11 +200,13 @@ class FlutterRunnerService {
       // Check if targeting Linux (explicitly or implicitly) and add X11 setup
       // If deviceId is null, Flutter defaults to available devices. On Termux, 'linux' is often the default/only choice for 'run'.
       // We assume if we are in Termux (which this IDE is), and running locally, we likely need X11 for the Linux target.
-      final isExplicitLinux = config.deviceId?.toLowerCase() == 'linux';
-
       // Heuristic: If deviceId is null, or explicit linux, set DISPLAY.
-      // Setting DISPLAY=:0 usually doesn't hurt other targets (like web-server), but implies X11 usage.
-      if (isExplicitLinux || config.deviceId == null) {
+      // On Termux, 'linux' is the native target trying to look like a desktop app.
+      // If the user selected 'web-server' or a connected android device locally via ADB (if that worked), we wouldn't need X11.
+      final deviceId = config.deviceId?.toLowerCase();
+      final isLinuxTarget = deviceId == 'linux' || deviceId == null;
+
+      if (isLinuxTarget) {
         // X11 Detection & Auto-Launch
         final isX11Installed =
             await InstalledApps.isAppInstalled('com.termux.x11');
@@ -216,7 +220,7 @@ class FlutterRunnerService {
               '\x1B[1;34m[IDE] 🔗 Please download it from: https://github.com/termux/termux-x11/releases\x1B[0m\r\n');
 
           stateNotifier.setState(RunnerState.error);
-          errorNotifier.setError('請先安裝 Termux:X11 APP 以顯示畫面');
+          errorNotifier.setError('請先安裝 Termux:X11 APP (請參考設定嚮導)');
           // Dispatch action to UI
           _ref
               .read(runnerActionProvider.notifier)
@@ -245,7 +249,12 @@ class FlutterRunnerService {
         cmdBuffer.write('export DISPLAY=:0 && ');
         // Also possibly needed for Termux-X11
         cmdBuffer.write('export PULSE_SERVER=tcp:127.0.0.1:4713 && ');
+        // Inject shim path to suppress xdg-open/termux-open browser launch
+        cmdBuffer.write('export PATH=\$HOME/.termux_ide/bin:\$PATH && ');
       }
+
+      // Always cd to working directory first
+      cmdBuffer.write('cd "$workingDir" && ');
 
       // Env vars
       if (config.env.isNotEmpty) {
@@ -290,15 +299,11 @@ class FlutterRunnerService {
     }
   }
 
-  /// Listen for shell completion to update state
+  /// Listen for session state changes to update runner state
   void _listenForSessionEnd(TerminalSession session) {
-    session.shell?.done.then((_) {
-      final currentId = _ref.read(activeRunnerSessionIdProvider);
-      if (currentId == session.id) {
-        _ref.read(runnerStateProvider.notifier).setState(RunnerState.stopped);
-        // Do NOT clear the session ID so the user can see the exit logs/crash report.
-      }
-    });
+    // Since we're using Bridge now, we don't have shell.done.
+    // The session state is managed differently with Bridge.
+    // For now, we rely on explicit stop() calls.
   }
 
   void hotReload() {
@@ -329,18 +334,16 @@ class FlutterRunnerService {
     final sessions = _ref.read(terminalSessionsProvider).sessions;
     try {
       final session = sessions.firstWhere((s) => s.id == currentId);
-      if (session.shell != null) {
-        session.shell!.write(Uint8List.fromList(utf8.encode(key)));
-      }
+      // Use write method which will execute via TermuxBridge
+      session.write(key);
     } catch (e) {
       // Session might be gone
     }
   }
 
   void _sendToSession(TerminalSession session, String command) {
-    if (session.shell != null) {
-      session.shell!.write(Uint8List.fromList(utf8.encode('$command\r\n')));
-    }
+    // Use write method which executes via TermuxBridge
+    session.write('$command\n');
   }
 
   void _setupVMServiceInterception(TerminalSession session) {
@@ -356,21 +359,16 @@ class FlutterRunnerService {
         final remotePort = int.parse(match.group(2)!);
 
         session.onDataReceived(
-            '\x1B[1;36m[IDE] 🔍 Detected VM Service on remote port $remotePort\x1B[0m\r\n');
+            '\x1B[1;36m[IDE] 🔍 Detected VM Service on port $remotePort\x1B[0m\r\n');
 
         try {
-          // 1. Setup SSH Tunnel
-          final sshService = _ref.read(sshServiceProvider);
-          final localPort = await sshService.forwardLocal(remotePort);
-
-          final localWsUri = remoteUriStr.replaceFirst(
-              '127.0.0.1:$remotePort', '127.0.0.1:$localPort');
+          // In Termux, VM Service is already on localhost - no tunnel needed
           session.onDataReceived(
-              '\x1B[1;36m[IDE] 🚀 SSH Tunnel established: $localWsUri\x1B[0m\r\n');
+              '\x1B[1;36m[IDE] 🚀 Connecting to VM Service: $remoteUriStr\x1B[0m\r\n');
 
-          // 2. Connect VMServiceManager
+          // Connect VMServiceManager directly
           final vmManager = _ref.read(vmServiceManagerProvider);
-          await vmManager.connect(localWsUri);
+          await vmManager.connect(remoteUriStr);
 
           session.onDataReceived(
               '\x1B[1;32m[IDE] ✔ Debugger Connected!\x1B[0m\r\n');
