@@ -2,12 +2,46 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dartssh2/dartssh2.dart';
 import '../termux/ssh_service.dart';
+import '../termux/termux_bridge.dart';
+import '../termux/termux_providers.dart';
 
-/// File Operations Service
-class FileOperations {
+/// File item model
+class FileItem {
+  final String name;
+  final String path;
+  final bool isDirectory;
+
+  FileItem({
+    required this.name,
+    required this.path,
+    required this.isDirectory,
+  });
+}
+
+/// Abstract File Operations Interface
+abstract class FileOperations {
+  Future<bool> exists(String path);
+  Future<bool> isDirectory(String path);
+  Future<bool> createFile(String path);
+  Future<bool> createDirectory(String path);
+  Future<bool> rename(String oldPath, String newPath);
+  Future<bool> deleteFile(String path);
+  Future<bool> deleteDirectory(String path);
+  Future<List<FileItem>> listDirectory(String path);
+  Future<String?> readFile(String path);
+  Future<bool> writeFile(String path, String content);
+  Future<bool> createFlutterProject(String parentDir, String name,
+      {String? org});
+  Future<({bool success, String? error})> createFlutterProjectWithError(
+      String parentDir, String name,
+      {String? org});
+}
+
+/// SSH Implementation of FileOperations
+class SshFileOperations implements FileOperations {
   final SSHService _ssh;
 
-  FileOperations(this._ssh);
+  SshFileOperations(this._ssh);
 
   Future<String> _exec(String cmd) async {
     if (!_ssh.isConnected) {
@@ -25,11 +59,12 @@ class FileOperations {
     // We source the flutter profile if it exists, and prepend common paths to PATH
     final cmdWithEnv =
         'source /data/data/com.termux/files/usr/etc/profile.d/flutter.sh 2>/dev/null; '
-        'export PATH=\$PATH:$systemPath:$userPath; $cmd';
+        'export PATH=$systemPath:$userPath:\$PATH; $cmd';
     return await _ssh.execute(cmdWithEnv);
   }
 
   /// Check if path exists
+  @override
   Future<bool> exists(String path) async {
     try {
       final result =
@@ -41,6 +76,7 @@ class FileOperations {
   }
 
   /// Check if path is directory
+  @override
   Future<bool> isDirectory(String path) async {
     try {
       final result =
@@ -52,6 +88,7 @@ class FileOperations {
   }
 
   /// Create a new file
+  @override
   Future<bool> createFile(String path) async {
     try {
       await _exec('touch "$path"');
@@ -62,6 +99,7 @@ class FileOperations {
   }
 
   /// Create a new directory
+  @override
   Future<bool> createDirectory(String path) async {
     try {
       await _exec('mkdir -p "$path"');
@@ -72,6 +110,7 @@ class FileOperations {
   }
 
   /// Rename/move a file or directory
+  @override
   Future<bool> rename(String oldPath, String newPath) async {
     try {
       await _exec('mv "$oldPath" "$newPath"');
@@ -82,6 +121,7 @@ class FileOperations {
   }
 
   /// Delete a file
+  @override
   Future<bool> deleteFile(String path) async {
     try {
       await _exec('rm "$path"');
@@ -92,6 +132,7 @@ class FileOperations {
   }
 
   /// Delete a directory (recursive)
+  @override
   Future<bool> deleteDirectory(String path) async {
     try {
       await _exec('rm -rf "$path"');
@@ -101,7 +142,7 @@ class FileOperations {
     }
   }
 
-  /// List directory contents
+  @override
   Future<List<FileItem>> listDirectory(String path) async {
     try {
       // Use -la to show hidden files. Use -F to show file types (e.g., / for dirs, @ for links)
@@ -152,6 +193,7 @@ class FileOperations {
   }
 
   /// Read file content via SFTP
+  @override
   Future<String?> readFile(String path) async {
     try {
       if (!_ssh.isConnected) await _ssh.connect();
@@ -173,6 +215,7 @@ class FileOperations {
   }
 
   /// Write file content via SFTP
+  @override
   Future<bool> writeFile(String path, String content) async {
     try {
       if (!_ssh.isConnected) await _ssh.connect();
@@ -200,6 +243,7 @@ class FileOperations {
   }
 
   /// Create a new Flutter project
+  @override
   Future<bool> createFlutterProject(String parentDir, String name,
       {String? org}) async {
     final result =
@@ -208,6 +252,7 @@ class FileOperations {
   }
 
   /// Create a new Flutter project with detailed error information
+  @override
   Future<({bool success, String? error})> createFlutterProjectWithError(
       String parentDir, String name,
       {String? org}) async {
@@ -238,23 +283,199 @@ class FileOperations {
   }
 }
 
-/// File item model
-class FileItem {
-  final String name;
-  final String path;
-  final bool isDirectory;
+/// Bridge Implementation of FileOperations (uses TermuxBridge instead of SSH)
+class BridgeFileOperations implements FileOperations {
+  final TermuxBridge _bridge;
 
-  FileItem({
-    required this.name,
-    required this.path,
-    required this.isDirectory,
-  });
+  BridgeFileOperations(this._bridge);
+
+  Future<String> _exec(String cmd) async {
+    final result = await _bridge.executeCommand(cmd);
+    if (!result.success && result.stderr.isNotEmpty) {
+      throw Exception(result.stderr);
+    }
+    return result.stdout;
+  }
+
+  @override
+  Future<bool> exists(String path) async {
+    try {
+      final result =
+          await _exec('[ -e "$path" ] && echo "exists" || echo "not found"');
+      return result.trim() == "exists";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> isDirectory(String path) async {
+    try {
+      final result =
+          await _exec('[ -d "$path" ] && echo "dir" || echo "not dir"');
+      return result.trim() == "dir";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> createFile(String path) async {
+    try {
+      await _exec('touch "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> createDirectory(String path) async {
+    try {
+      await _exec('mkdir -p "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> rename(String oldPath, String newPath) async {
+    try {
+      await _exec('mv "$oldPath" "$newPath"');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> deleteFile(String path) async {
+    try {
+      await _exec('rm "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> deleteDirectory(String path) async {
+    try {
+      await _exec('rm -rf "$path"');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  Future<List<FileItem>> listDirectory(String path) async {
+    try {
+      final stdout = await _exec('ls -la "$path"');
+      print('BridgeFileOperations: ls -la "$path" result:\n$stdout');
+      final lines = stdout.split('\n');
+      final items = <FileItem>[];
+
+      for (final line in lines) {
+        if (line.isEmpty || line.startsWith('total')) continue;
+
+        final parts = line.split(RegExp(r'\s+'));
+        if (parts.length < 9) continue;
+
+        final permissions = parts[0];
+        String name = parts.sublist(8).join(' ');
+
+        if (name == '.' || name == '..') continue;
+
+        bool isDirectory = permissions.startsWith('d');
+
+        if (permissions.startsWith('l')) {
+          final linkParts = name.split(' -> ');
+          if (linkParts.isNotEmpty) {
+            name = linkParts[0];
+            isDirectory = true;
+          }
+        }
+
+        items.add(FileItem(
+          name: name,
+          path: '$path/$name',
+          isDirectory: isDirectory,
+        ));
+      }
+      return items;
+    } catch (e) {
+      print('BridgeFileOperations: List directory failed: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<String?> readFile(String path) async {
+    try {
+      final result = await _exec('cat "$path"');
+      return result;
+    } catch (e) {
+      print('BridgeFileOperations: Read file failed: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<bool> writeFile(String path, String content) async {
+    try {
+      // Use printf to handle special characters, escape single quotes
+      final escaped = content.replaceAll("'", "'\\''");
+      await _exec("printf '%s' '$escaped' > \"$path\"");
+      return true;
+    } catch (e) {
+      print('BridgeFileOperations: Write file failed: $e');
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> createFlutterProject(String parentDir, String name,
+      {String? org}) async {
+    final result =
+        await createFlutterProjectWithError(parentDir, name, org: org);
+    return result.success;
+  }
+
+  @override
+  Future<({bool success, String? error})> createFlutterProjectWithError(
+      String parentDir, String name,
+      {String? org}) async {
+    try {
+      final orgArg = org != null && org.isNotEmpty ? '--org "$org"' : '';
+      final cmd = 'cd "$parentDir" && flutter create $orgArg "$name"';
+      print('BridgeFileOperations: Executing $cmd');
+      final result = await _exec(cmd);
+      print('BridgeFileOperations: Create result: $result');
+
+      if (result.contains('All done!') || result.contains('wrote')) {
+        return (success: true, error: null);
+      }
+
+      if (result.toLowerCase().contains('command not found') ||
+          result.toLowerCase().contains('no such file')) {
+        return (success: false, error: result);
+      }
+
+      return (success: true, error: null);
+    } catch (e) {
+      print('BridgeFileOperations: Create Flutter project failed: $e');
+      return (success: false, error: e.toString());
+    }
+  }
 }
 
-/// File Operations Provider
+/// File Operations Provider - Uses Bridge by default (no SSH required)
 final fileOperationsProvider = Provider<FileOperations>((ref) {
-  final ssh = ref.watch(sshServiceProvider);
-  return FileOperations(ssh);
+  // Use BridgeFileOperations as the default - works without SSH
+  final bridge = ref.watch(termuxBridgeProvider);
+  return BridgeFileOperations(bridge);
 });
 
 /// Current Directory Notifier

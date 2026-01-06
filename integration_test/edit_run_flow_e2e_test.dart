@@ -11,6 +11,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('E2E: Editor Edit and Run flow', (tester) async {
+<<<<<<< Updated upstream
     final projectPath = '/home/test_project';
     final testFile = FileItem(
       name: 'main.dart',
@@ -33,6 +34,15 @@ void main() {
           currentFileProvider.overrideWith(
             () => TestCurrentFileNotifier(testFile.path),
           ),
+=======
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectPathProvider.overrideWith(() => MockProjectPath()),
+          fileOperationsProvider.overrideWithValue(MockFileOps()),
+          openFilesProvider.overrideWith(() => MockOpenFiles()),
+          currentFileProvider.overrideWith(() => MockCurrentFile()),
+>>>>>>> Stashed changes
         ],
         child: const MaterialApp(home: EditorPage()),
       ),
@@ -67,6 +77,7 @@ class MockFileOps extends Fake implements FileOperations {
   Future<bool> writeFile(String path, String content) async => true;
 }
 
+<<<<<<< Updated upstream
 class TestProjectPathNotifier extends ProjectPathNotifier {
   final String? initial;
   TestProjectPathNotifier(this.initial);
@@ -86,4 +97,19 @@ class TestCurrentFileNotifier extends CurrentFileNotifier {
   TestCurrentFileNotifier(this.initial);
   @override
   String? build() => initial;
+=======
+class MockProjectPath extends ProjectPathNotifier {
+  @override
+  String? build() => '/home/test_project';
+}
+
+class MockOpenFiles extends OpenFilesNotifier {
+  @override
+  List<String> build() => ['/home/test_project/lib/main.dart'];
+}
+
+class MockCurrentFile extends CurrentFileNotifier {
+  @override
+  String? build() => '/home/test_project/lib/main.dart';
+>>>>>>> Stashed changes
 }

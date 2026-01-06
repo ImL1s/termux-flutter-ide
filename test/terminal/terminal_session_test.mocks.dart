@@ -488,7 +488,7 @@ class MockTermuxBridge extends _i1.Mock implements _i9.TermuxBridge {
   _i8.Future<_i9.TermuxResult> executeCommand(
     String? command, {
     String? workingDirectory,
-    bool? background = false,
+    bool? background = true,
   }) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -598,9 +598,107 @@ class MockTermuxBridge extends _i1.Mock implements _i9.TermuxBridge {
       ) as _i8.Future<int?>);
 
   @override
+  _i8.Future<_i9.ExternalAppsStatus> checkExternalAppsAllowed() =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #checkExternalAppsAllowed,
+          [],
+        ),
+        returnValue: _i8.Future<_i9.ExternalAppsStatus>.value(
+            _i9.ExternalAppsStatus.allowed),
+      ) as _i8.Future<_i9.ExternalAppsStatus>);
+
+  @override
+  _i8.Future<_i9.TermuxResult> enableExternalApps() => (super.noSuchMethod(
+        Invocation.method(
+          #enableExternalApps,
+          [],
+        ),
+        returnValue: _i8.Future<_i9.TermuxResult>.value(_FakeTermuxResult_7(
+          this,
+          Invocation.method(
+            #enableExternalApps,
+            [],
+          ),
+        )),
+      ) as _i8.Future<_i9.TermuxResult>);
+
+  @override
+  _i8.Future<bool> checkTermuxPrefix() => (super.noSuchMethod(
+        Invocation.method(
+          #checkTermuxPrefix,
+          [],
+        ),
+        returnValue: _i8.Future<bool>.value(false),
+      ) as _i8.Future<bool>);
+
+  @override
+  _i8.Future<bool> checkSSHServiceStatus() => (super.noSuchMethod(
+        Invocation.method(
+          #checkSSHServiceStatus,
+          [],
+        ),
+        returnValue: _i8.Future<bool>.value(false),
+      ) as _i8.Future<bool>);
+
+  @override
   _i8.Future<bool> openTermux() => (super.noSuchMethod(
         Invocation.method(
           #openTermux,
+          [],
+        ),
+        returnValue: _i8.Future<bool>.value(false),
+      ) as _i8.Future<bool>);
+
+  @override
+  _i8.Future<bool> openTermuxSettings() => (super.noSuchMethod(
+        Invocation.method(
+          #openTermuxSettings,
+          [],
+        ),
+        returnValue: _i8.Future<bool>.value(false),
+      ) as _i8.Future<bool>);
+
+  @override
+  _i8.Future<String?> getTermuxPackageInstaller() => (super.noSuchMethod(
+        Invocation.method(
+          #getTermuxPackageInstaller,
+          [],
+        ),
+        returnValue: _i8.Future<String?>.value(),
+      ) as _i8.Future<String?>);
+
+  @override
+  _i8.Future<bool> checkPermission(String? permission) => (super.noSuchMethod(
+        Invocation.method(
+          #checkPermission,
+          [permission],
+        ),
+        returnValue: _i8.Future<bool>.value(false),
+      ) as _i8.Future<bool>);
+
+  @override
+  _i8.Future<bool> launchTermux() => (super.noSuchMethod(
+        Invocation.method(
+          #launchTermux,
+          [],
+        ),
+        returnValue: _i8.Future<bool>.value(false),
+      ) as _i8.Future<bool>);
+
+  @override
+  _i8.Future<bool> openBatteryOptimizationSettings() => (super.noSuchMethod(
+        Invocation.method(
+          #openBatteryOptimizationSettings,
+          [],
+        ),
+        returnValue: _i8.Future<bool>.value(false),
+      ) as _i8.Future<bool>);
+
+  @override
+  _i8.Future<bool> canDrawOverlays() => (super.noSuchMethod(
+        Invocation.method(
+          #canDrawOverlays,
           [],
         ),
         returnValue: _i8.Future<bool>.value(false),
@@ -635,6 +733,30 @@ class MockTermuxBridge extends _i1.Mock implements _i9.TermuxBridge {
           ),
         )),
       ) as _i8.Future<_i9.TermuxResult>);
+
+  @override
+  _i8.Future<_i9.TermuxResult> installFlutter() => (super.noSuchMethod(
+        Invocation.method(
+          #installFlutter,
+          [],
+        ),
+        returnValue: _i8.Future<_i9.TermuxResult>.value(_FakeTermuxResult_7(
+          this,
+          Invocation.method(
+            #installFlutter,
+            [],
+          ),
+        )),
+      ) as _i8.Future<_i9.TermuxResult>);
+
+  @override
+  _i8.Future<bool> isFlutterInstalled() => (super.noSuchMethod(
+        Invocation.method(
+          #isFlutterInstalled,
+          [],
+        ),
+        returnValue: _i8.Future<bool>.value(false),
+      ) as _i8.Future<bool>);
 
   @override
   _i8.Stream<String> executeCommandStream(

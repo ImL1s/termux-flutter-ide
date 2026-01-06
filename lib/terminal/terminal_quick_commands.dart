@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
+import 'terminal_session.dart';
 
 /// Quick command definition
 class QuickCommand {
@@ -132,10 +133,18 @@ class TerminalQuickCommands extends ConsumerWidget {
     final projectPath = ref.read(projectPathProvider);
 
     if (projectPath == null) {
+      // Try to report to terminal first for better visibility
+      final activeSession = ref.read(terminalSessionsProvider).activeSession;
+      if (activeSession != null) {
+        activeSession.onDataReceived(
+            '\x1B[31m[IDE] Error: No project open. Please open a project folder first.\x1B[0m\r\n');
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('請先開啟專案'),
+          content: Text('請先開啟專案 (Please open a project first)'),
           backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
         ),
       );
       return;
@@ -169,10 +178,10 @@ class _QuickCommandButton extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: command.color.withOpacity(0.15),
+              color: command.color.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: command.color.withOpacity(0.3),
+                color: command.color.withValues(alpha: 0.3),
               ),
             ),
             child: Row(

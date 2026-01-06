@@ -6,6 +6,7 @@ import '../termux/termux_providers.dart'; // import termuxBridgeProvider
 /// Setup steps
 enum SetupStep {
   welcome,
+  environmentCheck, // New: check all prerequisites before starting
   termux, // Check if Termux app is installed
   termuxPermission, // Enable allow-external-apps in Termux (Prerequisite for Bridge)
   ssh,
@@ -66,6 +67,21 @@ class SetupService extends Notifier<SetupState> {
     final x11Service = ref.read(x11ServiceProvider);
     final termuxBridge = ref.read(termuxBridgeProvider);
 
+    // Auto-reconnect SSH if needed
+    if (!sshService.isConnected) {
+      try {
+        await sshService.connect();
+
+        if (!sshService.isConnected) {
+          print('SetupService: SSH check failed. Bootstrapping...');
+          await sshService.ensureBootstrapped();
+          await sshService.connect();
+        }
+      } catch (e) {
+        print('SetupService: Auto-reconnect failed: $e');
+      }
+    }
+
     // Check Termux installation first
     final isTermux = await termuxBridge.isTermuxInstalled();
     // final isConnected = true; // Mock for Flutter testing
@@ -76,16 +92,31 @@ class SetupService extends Notifier<SetupState> {
 
     if (isConnected) {
       try {
-        final result = await sshService.executeWithDetails('which flutter');
-        isFlutter = result.exitCode == 0 && result.stdout.trim().isNotEmpty;
+        // 1. Verify functionality
+        final result =
+            await sshService.executeWithDetails('flutter --version 2>&1');
+        print(
+            'TERMUX_IDE_SETUP: flutter --version -> ${result.exitCode}, val: ${result.stdout}');
+        isFlutter = result.exitCode == 0 && result.stdout.contains('Flutter');
+
+        if (isFlutter) {
+          print('TERMUX_IDE_SETUP: Flutter FOUND and WORKING!');
+        } else {
+          print('TERMUX_IDE_SETUP: Flutter NOT found or BROKEN.');
+        }
         isX11 = await x11Service.isInstalled();
       } catch (e) {
+        print('TERMUX_IDE_SETUP: Error checking environment: $e');
         // Ignore errors during check
       }
     } else {
       // If SSH not connected, try checking via bridge (Intent)
+      print('TERMUX_IDE_SETUP: SSH not connected. Checking via bridge...');
       isFlutter = await termuxBridge.isFlutterInstalled();
     }
+
+    print(
+        'TERMUX_IDE_SETUP: Final Check -> isFlutter: $isFlutter, isTermux: $isTermux, isSSH: $isConnected');
 
     state = state.copyWith(
       isTermuxInstalled: isTermux,
@@ -109,51 +140,27 @@ class SetupService extends Notifier<SetupState> {
   void nextStep() {
     switch (state.currentStep) {
       case SetupStep.welcome:
-        if (!state.isTermuxInstalled) {
-          state = state.copyWith(currentStep: SetupStep.termux);
-        } else if (state.isSSHConnected) {
-          // Skip SSH step if already connected
-          if (state.isFlutterInstalled) {
-            state = state.copyWith(currentStep: SetupStep.complete);
-          } else {
-            // Go through permission step first
-            state = state.copyWith(currentStep: SetupStep.termuxPermission);
-          }
-        } else {
-          state = state.copyWith(currentStep: SetupStep.ssh);
-        }
+        // After welcome, go to environment check
+        state = state.copyWith(currentStep: SetupStep.environmentCheck);
+        break;
+      case SetupStep.environmentCheck:
+        // Move to SSH step as it's the next configuration step
+        state = state.copyWith(currentStep: SetupStep.ssh);
         break;
       case SetupStep.termux:
-        checkEnvironment().then((_) {
-          if (state.isTermuxInstalled) {
-            // After installing, go to Permission first (so bridge works for SSH setup)
-            state = state.copyWith(currentStep: SetupStep.termuxPermission);
-          }
-        });
+        state = state.copyWith(currentStep: SetupStep.ssh);
         break;
       case SetupStep.termuxPermission:
-        // After permission step, go to SSH
         state = state.copyWith(currentStep: SetupStep.ssh);
         break;
       case SetupStep.ssh:
-        checkEnvironment().then((_) {
-          if (state.isSSHConnected) {
-            if (state.isFlutterInstalled) {
-              state = state.copyWith(currentStep: SetupStep.complete);
-            } else {
-              state = state.copyWith(currentStep: SetupStep.flutter);
-            }
-          } else {
-            // User choosing to skip/continue regardless of SSH
-            state = state.copyWith(currentStep: SetupStep.flutter);
-          }
-        });
+        // Always go to Flutter from SSH for now to simplify setup
+        state = state.copyWith(currentStep: SetupStep.flutter);
         break;
       case SetupStep.flutter:
         // Assume installation done or skipped
-        state = state.copyWith(currentStep: SetupStep.complete);
+        state = state.copyWith(currentStep: SetupStep.x11);
         break;
-      // ignore: unreachable_switch_case
       case SetupStep.x11:
         state = state.copyWith(currentStep: SetupStep.complete);
         break;
@@ -202,7 +209,7 @@ class SetupService extends Notifier<SetupState> {
           state.copyWith(installLog: '${state.installLog ?? ""}正在下載安裝腳本...\n');
 
       final downloadCmd =
-          'curl -sLf https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_termux_flutter.sh -o ~/install_termux_flutter.sh';
+          '/data/data/com.termux/files/usr/bin/curl -sLf https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_termux_flutter.sh -o ~/install_termux_flutter.sh';
       final downloadResult = await sshService.executeWithDetails(downloadCmd);
 
       if (downloadResult.exitCode != 0) {
@@ -217,21 +224,78 @@ class SetupService extends Notifier<SetupState> {
       await sshService
           .executeWithDetails('chmod +x ~/install_termux_flutter.sh');
 
-      // 3. 執行腳本
+      // 2.5 修復可能的 libuuid 連結問題 (Termux 常見問題)
       state = state.copyWith(
-          installLog: '${state.installLog ?? ""}開始執行安裝腳本...\n這個過程可能需要幾分鐘。\n');
+          installLog: '${state.installLog ?? ""}正在修復依賴套件並安裝 termux-tools...\n');
+      await sshService.executeWithDetails(
+          'pkg install -y termux-tools libandroid-posix-semaphore libuuid 2>/dev/null || true');
 
-      const installCmd = 'bash ~/install_termux_flutter.sh';
+      // 3. 執行腳本 (使用 nohup 在背景執行，避免 SSH 連線逾時)
+      state = state.copyWith(
+          installLog:
+              '${state.installLog ?? ""}開始執行安裝腳本...\n這個過程可能需要 5-10 分鐘。\n');
 
-      await for (final log in sshService.executeStream(installCmd)) {
-        state = state.copyWith(
-          installLog: '${state.installLog ?? ""}$log',
-        );
+      // 使用 nohup 在背景執行腳本，輸出到 log 檔案
+      const logFile = '/data/data/com.termux/files/home/flutter_install.log';
+      const installCmd =
+          'nohup /data/data/com.termux/files/usr/bin/bash ~/install_termux_flutter.sh > $logFile 2>&1 &';
+
+      // 啟動背景安裝
+      await sshService.executeWithDetails(installCmd);
+
+      // 等待一秒讓腳本開始
+      await Future.delayed(const Duration(seconds: 1));
+
+      // 使用 tail -f 監控 log 檔案，直到安裝完成
+      // 設定一個監控迴圈，每 2 秒檢查一次
+      bool installComplete = false;
+      int checkCount = 0;
+      const maxChecks = 300; // 最多等待 10 分鐘 (300 * 2 秒)
+
+      while (!installComplete && checkCount < maxChecks) {
+        await Future.delayed(const Duration(seconds: 2));
+        checkCount++;
+
+        // 讀取最新的 log 內容
+        final logResult = await sshService.executeWithDetails('cat $logFile');
+        if (logResult.exitCode == 0) {
+          state = state.copyWith(
+            installLog:
+                '正在初始化安裝程序...\n請勿關閉應用程式。\n\n正在下載安裝腳本...\n下載成功，正在賦予執行權限...\n開始執行安裝腳本...\n這個過程可能需要 5-10 分鐘。\n${logResult.stdout}',
+          );
+
+          // 檢查安裝是否完成 (腳本結尾會顯示 "Installation Complete!")
+          if (logResult.stdout.contains('Installation Complete!') ||
+              logResult.stdout.contains('安裝完成') ||
+              logResult.stdout.contains('Verify installation:')) {
+            installComplete = true;
+          }
+        }
+
+        // 檢查腳本是否還在執行
+        final psResult = await sshService
+            .executeWithDetails('pgrep -f install_termux_flutter || echo done');
+        if (psResult.stdout.trim() == 'done' && checkCount > 5) {
+          // 腳本已結束
+          installComplete = true;
+        }
       }
 
-      // Verify installation result
-      final result = await sshService.executeWithDetails('which flutter');
-      if (result.exitCode == 0 && result.stdout.trim().isNotEmpty) {
+      // Verify installation result and fix shebangs
+      final flutterPathResult = await sshService.executeWithDetails(
+          'which flutter || (ls ~/flutter/bin/flutter 2>/dev/null && echo /data/data/com.termux/files/home/flutter/bin/flutter)');
+      if (flutterPathResult.exitCode == 0 &&
+          flutterPathResult.stdout.trim().isNotEmpty) {
+        final flutterPath = flutterPathResult.stdout.trim();
+        state = state.copyWith(
+            installLog:
+                '${state.installLog ?? ""}正在修復 Flutter 及其 SDK 的執行檔路徑 (shebangs)...\n');
+
+        // Fix shebangs for the main binary and everything in its bin dir
+        final flutterBinDir = flutterPath.replaceAll('/flutter', '');
+        await sshService.executeWithDetails(
+            'termux-fix-shebang "$flutterPath" && find "$flutterBinDir" -type f -exec termux-fix-shebang {} \\;');
+
         state = state.copyWith(
           isInstalling: false,
           installLog: '${state.installLog ?? ""}安裝腳本執行完畢，Flutter 已準備就緒。\n',

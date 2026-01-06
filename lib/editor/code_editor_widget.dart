@@ -28,6 +28,7 @@ import '../services/lsp_service.dart';
 import 'diagnostics_provider.dart';
 import 'find_replace_bar.dart';
 import 'breadcrumb_bar.dart';
+import '../core/scrollable_with_scrollbar.dart';
 
 class CodeEditorWidget extends ConsumerStatefulWidget {
   const CodeEditorWidget({super.key});
@@ -44,12 +45,14 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
   Timer? _autoSaveTimer;
   final FocusNode _focusNode = FocusNode();
   bool _showFindReplace = false;
+  final ScrollController _verticalScrollController = ScrollController();
 
   @override
   void dispose() {
     _autoSaveTimer?.cancel();
     _controller?.dispose();
     _focusNode.dispose();
+    _verticalScrollController.dispose();
     super.dispose();
   }
 
@@ -185,8 +188,39 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
     }
 
     if (_controller == null) {
-      return const Center(
-        child: Text('No file selected', style: TextStyle(color: Colors.grey)),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.folder_open, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              'No file selected',
+              style: TextStyle(color: Colors.grey, fontSize: 18),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                // Open file tree bottom sheet
+                Scaffold.of(context).openDrawer();
+                // Or better, directly trigger the open folder logic if accessible
+                // But since logic is in EditorPage/Drawer, we might just open drawer
+                // Or we can find the FileTreeWidget logic.
+                // For now, let's open the drawer as a hint.
+                // Actually, let's try to simulate the "Open Folder" action if possible
+                // by using a callback or provider?
+                // For simplicity: Open Drawer
+                Scaffold.of(context).openDrawer();
+              },
+              icon: const Icon(Icons.folder_open),
+              label: const Text('Open Project Folder'),
+              style: ElevatedButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
@@ -207,24 +241,28 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
               data: CodeThemeData(styles: _getThemeStyles(editorTheme)),
               child: Stack(
                 children: [
-                  SingleChildScrollView(
-                    child: CodeField(
-                      focusNode: _focusNode,
-                      controller: _controller!,
-                      textStyle: TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: fontSize,
-                      ),
-                      gutterStyle: GutterStyle(
-                        showFoldingHandles: true,
-                        showLineNumbers: true,
-                        showErrors: false, // We use our own diagnostic layer
+                  ScrollableWithScrollbar(
+                    controller: _verticalScrollController,
+                    child: SingleChildScrollView(
+                      controller: _verticalScrollController,
+                      child: CodeField(
+                        focusNode: _focusNode,
+                        controller: _controller!,
                         textStyle: TextStyle(
                           fontFamily: 'JetBrains Mono',
-                          fontSize: fontSize * 0.75,
-                          color: Colors.grey[600],
+                          fontSize: fontSize,
                         ),
-                        background: const Color(0xFF1E1E2E),
+                        gutterStyle: GutterStyle(
+                          showFoldingHandles: true,
+                          showLineNumbers: true,
+                          showErrors: false, // We use our own diagnostic layer
+                          textStyle: TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: fontSize * 0.75,
+                            color: Colors.grey[600],
+                          ),
+                          background: const Color(0xFF1E1E2E),
+                        ),
                       ),
                     ),
                   ),
@@ -236,6 +274,7 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
                     width: 45, // Match gutterWidth in _BreakpointLayer
                     child: _BreakpointLayer(
                       controller: _controller!,
+                      scrollController: _verticalScrollController,
                       fontSize: fontSize,
                       filePath: _currentFilePath!,
                     ),
@@ -247,6 +286,7 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
                     bottom: 0,
                     width: 45,
                     child: _DiagnosticGutterLayer(
+                      scrollController: _verticalScrollController,
                       fontSize: fontSize,
                       filePath: _currentFilePath!,
                     ),
@@ -494,10 +534,12 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
 class _DiagnosticGutterLayer extends ConsumerWidget {
   final double fontSize;
   final String filePath;
+  final ScrollController scrollController;
 
   const _DiagnosticGutterLayer({
     required this.fontSize,
     required this.filePath,
+    required this.scrollController,
   });
 
   @override
@@ -510,17 +552,23 @@ class _DiagnosticGutterLayer extends ConsumerWidget {
     final lineHeight = fontSize * 1.5;
     const gutterWidth = 45.0;
 
-    return IgnorePointer(
-      child: SizedBox.expand(
-        child: CustomPaint(
-          painter: _DiagnosticGutterPainter(
-            diagnostics: diagnostics,
-            lineHeight: lineHeight,
-            gutterWidth: gutterWidth,
-            scrollOffset: Scrollable.maybeOf(context)?.position.pixels ?? 0,
+    return AnimatedBuilder(
+      animation: scrollController,
+      builder: (context, _) {
+        return IgnorePointer(
+          child: SizedBox.expand(
+            child: CustomPaint(
+              painter: _DiagnosticGutterPainter(
+                diagnostics: diagnostics,
+                lineHeight: lineHeight,
+                gutterWidth: gutterWidth,
+                scrollOffset:
+                    scrollController.hasClients ? scrollController.offset : 0,
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -584,11 +632,13 @@ class _BreakpointLayer extends ConsumerWidget {
   final CodeController controller;
   final double fontSize;
   final String filePath;
+  final ScrollController scrollController;
 
   const _BreakpointLayer({
     required this.controller,
     required this.fontSize,
     required this.filePath,
+    required this.scrollController,
   });
 
   @override
@@ -601,99 +651,107 @@ class _BreakpointLayer extends ConsumerWidget {
     // Let's assume a safe area for clicking (first 40-50 pixels)
     const gutterWidth = 45.0;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTapUp: (details) {
-        if (details.localPosition.dx <= gutterWidth) {
-          final effectiveTapY = details.localPosition.dy +
-              (Scrollable.maybeOf(context)?.position.pixels ?? 0);
-          final line = (effectiveTapY / lineHeight).floor() + 1;
+    return AnimatedBuilder(
+      animation: scrollController,
+      builder: (context, _) {
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapUp: (details) {
+            if (details.localPosition.dx <= gutterWidth) {
+              final effectiveTapY = details.localPosition.dy +
+                  (scrollController.hasClients ? scrollController.offset : 0);
+              final line = (effectiveTapY / lineHeight).floor() + 1;
 
-          ref
-              .read(breakpointsProvider.notifier)
-              .toggleBreakpoint(filePath, line);
-        }
-      },
-      onLongPressStart: (details) async {
-        if (details.localPosition.dx <= gutterWidth) {
-          final effectiveTapY = details.localPosition.dy +
-              (Scrollable.maybeOf(context)?.position.pixels ?? 0);
-          final line = (effectiveTapY / lineHeight).floor() + 1;
-
-          final controller = TextEditingController();
-          final currentBp =
-              ref.read(breakpointsProvider).breakpoints.firstWhere(
-                    (b) => b.path == filePath && b.line == line,
-                    orElse: () => Breakpoint(path: filePath, line: line),
-                  );
-
-          if (currentBp.condition != null) {
-            controller.text = currentBp.condition!;
-          }
-
-          final condition = await showDialog<String>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text('Edit Breakpoint at Line $line'),
-              content: TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  labelText: 'Condition (optional)',
-                  hintText: 'e.g. i > 5',
-                ),
-              ),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel')),
-                TextButton(
-                    onPressed: () => Navigator.pop(context, controller.text),
-                    child: const Text('Save')),
-              ],
-            ),
-          );
-
-          if (condition != null) {
-            // Update breakpoint with condition (or remove condition if empty string?)
-            // If empty string, maybe treat as null?
-            final finalCondition = condition.trim().isEmpty ? null : condition;
-
-            // Note: toggleBreakpoint logic toggles if exists.
-            // If we are editing, we probably want to FORCE set or update.
-            // But our notifier only has toggle.
-            // Let's modify toggle logic: if it exists, remove it first?
-            // Or better, just call toggle to add/update if we pass condition.
-
-            // If it already exists, toggle removes it.
-            // We should probably check existence.
-            final exists = ref
-                .read(breakpointsProvider)
-                .breakpoints
-                .any((b) => b.path == filePath && b.line == line);
-
-            if (exists) {
-              // Remove old one first
               ref
                   .read(breakpointsProvider.notifier)
                   .toggleBreakpoint(filePath, line);
             }
-            // Add new one with condition
-            ref
-                .read(breakpointsProvider.notifier)
-                .toggleBreakpoint(filePath, line, condition: finalCondition);
-          }
-        }
-      },
-      child: SizedBox.expand(
-        child: CustomPaint(
-          painter: _BreakpointPainter(
-            breakpoints: breakpoints,
-            lineHeight: lineHeight,
-            gutterWidth: gutterWidth,
-            scrollOffset: Scrollable.maybeOf(context)?.position.pixels ?? 0,
+          },
+          onLongPressStart: (details) async {
+            if (details.localPosition.dx <= gutterWidth) {
+              final effectiveTapY = details.localPosition.dy +
+                  (scrollController.hasClients ? scrollController.offset : 0);
+              final line = (effectiveTapY / lineHeight).floor() + 1;
+
+              final controller = TextEditingController();
+              final currentBp =
+                  ref.read(breakpointsProvider).breakpoints.firstWhere(
+                        (b) => b.path == filePath && b.line == line,
+                        orElse: () => Breakpoint(path: filePath, line: line),
+                      );
+
+              if (currentBp.condition != null) {
+                controller.text = currentBp.condition!;
+              }
+
+              final condition = await showDialog<String>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('Edit Breakpoint at Line $line'),
+                  content: TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(
+                      labelText: 'Condition (optional)',
+                      hintText: 'e.g. i > 5',
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel')),
+                    TextButton(
+                        onPressed: () =>
+                            Navigator.pop(context, controller.text),
+                        child: const Text('Save')),
+                  ],
+                ),
+              );
+
+              if (condition != null) {
+                // Update breakpoint with condition (or remove condition if empty string?)
+                // If empty string, maybe treat as null?
+                final finalCondition =
+                    condition.trim().isEmpty ? null : condition;
+
+                // Note: toggleBreakpoint logic toggles if exists.
+                // If we are editing, we probably want to FORCE set or update.
+                // But our notifier only has toggle.
+                // Let's modify toggle logic: if it exists, remove it first?
+                // Or better, just call toggle to add/update if we pass condition.
+
+                // If it already exists, toggle removes it.
+                // We should probably check existence.
+                final exists = ref
+                    .read(breakpointsProvider)
+                    .breakpoints
+                    .any((b) => b.path == filePath && b.line == line);
+
+                if (exists) {
+                  // Remove old one first
+                  ref
+                      .read(breakpointsProvider.notifier)
+                      .toggleBreakpoint(filePath, line);
+                }
+                // Add new one with condition
+                ref.read(breakpointsProvider.notifier).toggleBreakpoint(
+                    filePath, line,
+                    condition: finalCondition);
+              }
+            }
+          },
+          child: SizedBox.expand(
+            child: CustomPaint(
+              painter: _BreakpointPainter(
+                breakpoints: breakpoints,
+                lineHeight: lineHeight,
+                gutterWidth: gutterWidth,
+                scrollOffset:
+                    scrollController.hasClients ? scrollController.offset : 0,
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

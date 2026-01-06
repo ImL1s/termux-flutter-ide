@@ -8,7 +8,9 @@ import '../file_manager/file_tree_widget.dart';
 import '../file_manager/file_operations.dart';
 import '../terminal/terminal_widget.dart';
 import '../termux/termux_providers.dart';
+import '../termux/termux_bridge.dart';
 import '../termux/ssh_service.dart';
+import '../termux/ssh_error_dialog.dart';
 import '../ai/ai_chat_widget.dart';
 import '../ai/ai_providers.dart';
 import '../search/search_widget.dart';
@@ -24,7 +26,7 @@ import '../git/git_clone_dialog.dart';
 import '../core/providers.dart';
 import '../run/flutter_runner_widget.dart';
 import '../run/vm_service_manager.dart';
-import '../run/flutter_runner_service.dart';
+
 import 'flutter_create_dialog.dart';
 import 'package_search_dialog.dart';
 import 'problems_view.dart';
@@ -37,6 +39,9 @@ import '../core/responsive.dart';
 import 'workspace_symbol_dialog.dart';
 import 'recent_files_dialog.dart';
 import 'keyboard_shortcuts_dialog.dart';
+
+import '../core/keyboard_shortcuts.dart';
+import '../core/input_adaptive.dart';
 
 enum BottomPanelTab { terminal, problems }
 
@@ -62,6 +67,8 @@ class _EditorPageState extends ConsumerState<EditorPage>
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _registerCommands();
+      // Ensure Termux environment is robust
+      TermuxBridge().fixTermuxEnvironment();
     });
   }
 
@@ -232,6 +239,16 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
     registry.register(
       Command(
+        id: 'flutter.verify',
+        title: 'Verify Flutter Toolchain',
+        category: 'Flutter',
+        icon: Icons.fact_check,
+        action: _verifyFlutter,
+      ),
+    );
+
+    registry.register(
+      Command(
         id: 'editor.keyboardShortcuts',
         title: 'Keyboard Shortcuts',
         category: 'Help',
@@ -243,126 +260,57 @@ class _EditorPageState extends ConsumerState<EditorPage>
 
   @override
   Widget build(BuildContext context) {
-    // Hot Reload on Save Listener
-    ref.listen(saveTriggerProvider, (previous, next) {
-      if (previous != next) {
-        // Trigger Hot Reload if a session is active
-        ref.read(flutterRunnerServiceProvider).hotReload();
-      }
-    });
+    // Setup keyboard actions mapping
+    final actions = buildActions(ref);
 
-    final formFactor = Responsive.getFormFactor(context);
+    // Get the core scaffold
+    Widget scaffold = _buildScaffoldContent();
 
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
-            ref.read(saveTriggerProvider.notifier).trigger(),
-        const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () =>
-            ref.read(saveTriggerProvider.notifier).trigger(),
-        const SingleActivator(LogicalKeyboardKey.keyP, control: true): () =>
-            showCommandPalette(context, ref),
-        const SingleActivator(LogicalKeyboardKey.keyP, meta: true): () =>
-            showCommandPalette(context, ref),
-        const SingleActivator(LogicalKeyboardKey.keyF, control: true): () {
-          _openFindReplace();
-        },
-        const SingleActivator(LogicalKeyboardKey.keyF, meta: true): () {
-          _openFindReplace();
-        },
+    // Wrap with comprehensive input handling
+    return PopScope(
+      canPop: !_showTerminal,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_showTerminal) {
+          setState(() => _showTerminal = false);
+        }
       },
-      child: Focus(
-        autofocus: true,
-        child: Column(
-          children: [
-            // SSH Status Banner
-            Consumer(
-              builder: (context, ref, _) {
-                final status = ref.watch(sshStatusProvider).asData?.value ??
-                    SSHStatus.disconnected;
-                if (status == SSHStatus.failed) {
-                  return Container(
-                    color: Colors.red.shade900,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline,
-                            color: Colors.white, size: 20),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'Termux SSH Connection Failed. Please ensure Termux is installed and SSHD is running.',
-                            style: TextStyle(color: Colors.white, fontSize: 13),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () =>
-                              ref.read(sshServiceProvider).connect(),
-                          child: const Text('RETRY',
-                              style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                if (status == SSHStatus.bootstrapping) {
-                  return Container(
-                    color: Colors.blue.shade900,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: const Row(
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Bootstrapping Termux SSH Environment...',
-                          style: TextStyle(color: Colors.white, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
+      child: KeyboardShortcutsWrapper(
+        child: Actions(
+          actions: actions,
+          child: FocusTraversalGroup(
+            // Enable Tab navigation
+            policy: ReadingOrderTraversalPolicy(),
+            child: InputAdaptiveWrapper(
+              // Unified input handling
+              enableHoverEffect: false, // Don't hover the whole page
+              enableRipple: false,
+              child: scaffold,
             ),
-            Expanded(
-              child: _buildScaffoldForFormFactor(formFactor),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  /// Builds the appropriate scaffold based on device form factor
-  /// Uses AnimatedSwitcher for smooth transitions between fold states
-  Widget _buildScaffoldForFormFactor(DeviceFormFactor formFactor) {
-    Widget scaffold;
+  // ... (existing code)
 
-    // Priority 1: Flex Mode (half-opened posture)
+  Widget _buildScaffoldContent() {
+    Widget content;
+
+    // Prioritize flexible/foldable logic
     if (Responsive.isFlexMode(context)) {
-      scaffold = _buildFlexModeScaffold();
-    }
-    // Priority 2: Cover Screen (narrow tall screen when folded)
-    else if (Responsive.isCoverScreen(context)) {
-      scaffold = _buildMobileScaffold();
-    }
-    // Default: Based on form factor
-    else {
-      switch (formFactor) {
-        case DeviceFormFactor.mobile:
-          scaffold = _buildMobileScaffold();
-        case DeviceFormFactor.foldableOpen:
-          scaffold = _buildFoldableScaffold();
-        case DeviceFormFactor.tablet:
-        case DeviceFormFactor.desktop:
-          scaffold = _buildDesktopScaffold();
-      }
+      content = _buildFlexModeScaffold();
+    } else if (Responsive.getHingeBounds(context) != null &&
+        !Responsive.isCoverScreen(context)) {
+      // Unfolded state on dual-screen/foldable device
+      content = _buildFoldableScaffold();
+    } else if (Responsive.isCoverScreen(context)) {
+      content = _buildMobileScaffold(); // Re-use mobile layout for cover screen
+    } else if (Responsive.isDesktop(context) || Responsive.isTablet(context)) {
+      content = _buildDesktopScaffold();
+    } else {
+      content = _buildMobileScaffold();
     }
 
     // Smooth transition between layouts
@@ -372,8 +320,20 @@ class _EditorPageState extends ConsumerState<EditorPage>
       switchOutCurve: Curves.easeInOut,
       child: KeyedSubtree(
         key: ValueKey(
-            formFactor.toString() + Responsive.isFlexMode(context).toString()),
-        child: scaffold,
+            '${Responsive.getFormFactor(context)}-${Responsive.isFlexMode(context)}'),
+        child: Focus(
+          autofocus: true,
+          child: Column(
+            children: [
+              // SSH Status Banner - DISABLED: We now use TermuxBridge, SSH is optional
+              // The SSH error banner was confusing users since SSH is no longer required
+              const SizedBox.shrink(),
+              Expanded(
+                child: content,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -694,6 +654,12 @@ class _EditorPageState extends ConsumerState<EditorPage>
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.fact_check, color: Color(0xFFA6E3A1)),
+            key: const Key('appbar_verify_action'),
+            onPressed: _verifyFlutter,
+            tooltip: 'Verify Flutter',
+          ),
           IconButton(
             icon: const Icon(Icons.play_arrow, color: Color(0xFFCBA6F7)),
             key: const Key('appbar_run_action'),
@@ -1156,6 +1122,59 @@ class _EditorPageState extends ConsumerState<EditorPage>
     }
   }
 
+  void _verifyFlutter() async {
+    final bridge = ref.read(termuxBridgeProvider);
+    if (!_showTerminal) setState(() => _showTerminal = true);
+
+    // Show loading snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('正在執行 flutter doctor...')),
+    );
+
+    // Run diagnostic command
+    // Run diagnostic command
+    // Run diagnostic command
+    final result = await bridge.executeCommand(
+        'bash -c "id; pwd; echo ---; which -a flutter; echo ---; flutter --version 2>&1; echo ---; ls -l \$(which flutter) 2>&1; echo ---; head -n 5 \$(which flutter) 2>&1"');
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Flutter Toolchain Verification'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Success: ${result.success}'),
+                Text('Exit Code: ${result.exitCode}'),
+                const Divider(),
+                const Text('Output:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(result.stdout.isEmpty ? '(Empty)' : result.stdout),
+                if (result.stderr.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text('Error:',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.red)),
+                  Text(result.stderr,
+                      style: const TextStyle(color: Colors.red)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   void _runFlutter() {
     final projectPath = ref.read(projectPathProvider);
     if (projectPath == null) {
@@ -1204,6 +1223,16 @@ class _EditorPageState extends ConsumerState<EditorPage>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('正在準備專案環境...')),
       );
+
+      // Automatically open Explorer to show the new project
+      if (MediaQuery.of(context).size.width < 600) {
+        _showExplorerMobile();
+      } else {
+        // Desktop/Tablet: Switch sidebar to explorer
+        ref
+            .read(selectedActivityProvider.notifier)
+            .select(ActivityItem.explorer);
+      }
     }
   }
 

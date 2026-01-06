@@ -9,17 +9,18 @@ class TermuxPaths {
   static const String home = '$prefix/home';
 
   // Flutter/Dart specific paths
-  // Installation dir usually in $usr/opt/flutter
-  static const String flutterHome = '$usr/opt/flutter';
-  static const String flutterBin = '$flutterHome/bin';
-  static const String flutterExecutable = '$flutterBin/flutter';
+  // Installation dir usually in $home/flutter or $usr/opt/flutter
+  static String get flutterHome => '$home/.termux_ide/flutter';
 
-  static const String dartSdk = '$flutterBin/cache/dart-sdk';
-  static const String dartBin = '$dartSdk/bin';
-  static const String dartExecutable = '$dartBin/dart';
+  static String get flutterBin => '$flutterHome/bin';
+  static String get flutterExecutable => '$flutterBin/flutter';
 
-  static const String snapshots = '$dartBin/snapshots';
-  static const String analysisServerSnapshot =
+  static String get dartSdk => '$flutterBin/cache/dart-sdk';
+  static String get dartBin => '$dartSdk/bin';
+  static String get dartExecutable => '$dartBin/dart';
+
+  static String get snapshots => '$dartBin/snapshots';
+  static String get analysisServerSnapshot =>
       '$snapshots/analysis_server.dart.snapshot';
 }
 

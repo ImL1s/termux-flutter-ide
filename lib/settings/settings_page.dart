@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'settings_providers.dart';
 import '../theme/app_theme.dart';
+import '../debug/termux_debug_page.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -49,16 +50,16 @@ class SettingsPage extends ConsumerWidget {
                             icon: const Icon(Icons.remove_circle_outline),
                             onPressed: fontSize > FontSizeNotifier.minSize
                                 ? () => ref
-                                      .read(fontSizeProvider.notifier)
-                                      .setFontSize(fontSize - 1)
+                                    .read(fontSizeProvider.notifier)
+                                    .setFontSize(fontSize - 1)
                                 : null,
                           ),
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
                             onPressed: fontSize < FontSizeNotifier.maxSize
                                 ? () => ref
-                                      .read(fontSizeProvider.notifier)
-                                      .setFontSize(fontSize + 1)
+                                    .read(fontSizeProvider.notifier)
+                                    .setFontSize(fontSize + 1)
                                 : null,
                           ),
                         ],
@@ -116,6 +117,27 @@ class SettingsPage extends ConsumerWidget {
                   },
                 );
               }).toList(),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Developer Tools Section
+          _buildSectionTitle('開發者工具'),
+          Card(
+            color: AppTheme.surfaceVariant,
+            child: ListTile(
+              leading: const Icon(Icons.bug_report_outlined),
+              title: const Text('Termux 診斷工具'),
+              subtitle: const Text('測試所有 Termux 互動功能'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const TermuxDebugPage(),
+                  ),
+                );
+              },
             ),
           ),
           const SizedBox(height: 24),

@@ -163,7 +163,7 @@ Future<bool?> showFlutterCreateDialog(
     BuildContext context, String initialPath) {
   return showDialog<bool>(
     context: context,
-    barrierDismissible: false,
+    barrierDismissible: true,
     builder: (context) => FlutterCreateDialog(initialPath: initialPath),
   );
 }

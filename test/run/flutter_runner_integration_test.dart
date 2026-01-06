@@ -52,7 +52,7 @@ class MockSSHService extends SSHService {
   MockSSHService() : super(TermuxBridge());
 }
 
-class MockFileOperations extends FileOperations {
+class MockFileOperations extends SshFileOperations {
   MockFileOperations() : super(MockSSHService());
 
   @override
@@ -162,13 +162,16 @@ void main() {
       tempDir = await Directory.systemTemp.createTemp('flutter_runner_test');
 
       // Mock installed_apps channel
-      const MethodChannel('installed_apps')
-          .setMockMethodCallHandler((MethodCall methodCall) async {
-        if (methodCall.method == 'isAppInstalled') {
-          return true; // Simulate Termux:X11 installed
-        }
-        return null;
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('installed_apps'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'isAppInstalled') {
+            return true; // Simulate Termux:X11 installed
+          }
+          return null;
+        },
+      );
     });
 
     tearDown(() async {
@@ -473,7 +476,8 @@ void main() {
     });
 
     test('createDefaultLaunchConfig creates directory and file', () async {
-      await createDefaultLaunchConfig(tempDir.path);
+      final ops = MockFileOperations();
+      await createDefaultLaunchConfig(tempDir.path, ops);
 
       final dir = Directory('${tempDir.path}/.termux-ide');
       final file = File('${tempDir.path}/.termux-ide/launch.json');
@@ -494,7 +498,8 @@ void main() {
       final file = File('${tempDir.path}/.termux-ide/launch.json');
       await file.writeAsString('{"custom": true}');
 
-      await createDefaultLaunchConfig(tempDir.path);
+      final ops = MockFileOperations();
+      await createDefaultLaunchConfig(tempDir.path, ops);
 
       final content = await file.readAsString();
       expect(content, '{"custom": true}');

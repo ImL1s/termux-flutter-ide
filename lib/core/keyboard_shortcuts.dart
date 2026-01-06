@@ -28,6 +28,36 @@ class ToggleSidebarIntent extends Intent {
   const ToggleSidebarIntent();
 }
 
+// === New Intents ===
+
+class GoToDefinitionIntent extends Intent {
+  const GoToDefinitionIntent();
+}
+
+class FindReferencesIntent extends Intent {
+  const FindReferencesIntent();
+}
+
+class RunIntent extends Intent {
+  const RunIntent();
+}
+
+class ToggleBreakpointIntent extends Intent {
+  const ToggleBreakpointIntent();
+}
+
+class FindIntent extends Intent {
+  const FindIntent();
+}
+
+class EscapeIntent extends Intent {
+  const EscapeIntent();
+}
+
+class FormatDocumentIntent extends Intent {
+  const FormatDocumentIntent();
+}
+
 /// Action callbacks that will be set by the EditorPage
 class KeyboardShortcutCallbacks {
   final VoidCallback? onSave;
@@ -36,6 +66,14 @@ class KeyboardShortcutCallbacks {
   final VoidCallback? onCloseTab;
   final VoidCallback? onNewTerminal;
   final VoidCallback? onToggleSidebar;
+  // New callbacks
+  final VoidCallback? onGoToDefinition;
+  final VoidCallback? onFindReferences;
+  final VoidCallback? onRun;
+  final VoidCallback? onToggleBreakpoint;
+  final VoidCallback? onFind;
+  final VoidCallback? onEscape;
+  final VoidCallback? onFormatDocument;
 
   const KeyboardShortcutCallbacks({
     this.onSave,
@@ -44,6 +82,13 @@ class KeyboardShortcutCallbacks {
     this.onCloseTab,
     this.onNewTerminal,
     this.onToggleSidebar,
+    this.onGoToDefinition,
+    this.onFindReferences,
+    this.onRun,
+    this.onToggleBreakpoint,
+    this.onFind,
+    this.onEscape,
+    this.onFormatDocument,
   });
 }
 
@@ -63,6 +108,7 @@ class KeyboardCallbacksNotifier extends Notifier<KeyboardShortcutCallbacks> {
 /// Build keyboard shortcuts map
 Map<ShortcutActivator, Intent> buildShortcuts() {
   return {
+    // === Original Shortcuts ===
     // Save: Ctrl+S
     const SingleActivator(LogicalKeyboardKey.keyS, control: true):
         const SaveFileIntent(),
@@ -86,6 +132,32 @@ Map<ShortcutActivator, Intent> buildShortcuts() {
     // Toggle Sidebar: Ctrl+B
     const SingleActivator(LogicalKeyboardKey.keyB, control: true):
         const ToggleSidebarIntent(),
+
+    // === New Shortcuts ===
+    // Go to Definition: F12
+    const SingleActivator(LogicalKeyboardKey.f12): const GoToDefinitionIntent(),
+
+    // Find References: Shift+F12
+    const SingleActivator(LogicalKeyboardKey.f12, shift: true):
+        const FindReferencesIntent(),
+
+    // Run: F5
+    const SingleActivator(LogicalKeyboardKey.f5): const RunIntent(),
+
+    // Toggle Breakpoint: F9
+    const SingleActivator(LogicalKeyboardKey.f9):
+        const ToggleBreakpointIntent(),
+
+    // Find: Ctrl+F
+    const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+        const FindIntent(),
+
+    // Escape: Cancel/Close
+    const SingleActivator(LogicalKeyboardKey.escape): const EscapeIntent(),
+
+    // Format Document: Alt+Shift+F
+    const SingleActivator(LogicalKeyboardKey.keyF, alt: true, shift: true):
+        const FormatDocumentIntent(),
   };
 }
 
@@ -129,6 +201,49 @@ Map<Type, Action<Intent>> buildActions(WidgetRef ref) {
     ToggleSidebarIntent: CallbackAction<ToggleSidebarIntent>(
       onInvoke: (_) {
         callbacks.onToggleSidebar?.call();
+        return null;
+      },
+    ),
+    // === New Actions ===
+    GoToDefinitionIntent: CallbackAction<GoToDefinitionIntent>(
+      onInvoke: (_) {
+        callbacks.onGoToDefinition?.call();
+        return null;
+      },
+    ),
+    FindReferencesIntent: CallbackAction<FindReferencesIntent>(
+      onInvoke: (_) {
+        callbacks.onFindReferences?.call();
+        return null;
+      },
+    ),
+    RunIntent: CallbackAction<RunIntent>(
+      onInvoke: (_) {
+        callbacks.onRun?.call();
+        return null;
+      },
+    ),
+    ToggleBreakpointIntent: CallbackAction<ToggleBreakpointIntent>(
+      onInvoke: (_) {
+        callbacks.onToggleBreakpoint?.call();
+        return null;
+      },
+    ),
+    FindIntent: CallbackAction<FindIntent>(
+      onInvoke: (_) {
+        callbacks.onFind?.call();
+        return null;
+      },
+    ),
+    EscapeIntent: CallbackAction<EscapeIntent>(
+      onInvoke: (_) {
+        callbacks.onEscape?.call();
+        return null;
+      },
+    ),
+    FormatDocumentIntent: CallbackAction<FormatDocumentIntent>(
+      onInvoke: (_) {
+        callbacks.onFormatDocument?.call();
         return null;
       },
     ),

@@ -40,6 +40,11 @@
     <queries>
         <!-- Termux package for RUN_COMMAND -->
         <package android:name="com.termux" />
+        <package android:name="com.termux.window" />
+        <package android:name="com.termux.api" />
+        <package android:name="com.termux.tasker" />
+        <package android:name="com.termux.boot" />
+        <package android:name="com.termux.widget" />
         <!-- Termux:X11 for display -->
         <package android:name="com.termux.x11" />
         <intent>

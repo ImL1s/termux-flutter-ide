@@ -1,10 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart';
-import 'package:dartssh2/dartssh2.dart';
-import '../termux/termux_providers.dart';
+import '../termux/termux_bridge.dart';
 
 enum SessionState { connecting, connected, disconnected, failed }
 
@@ -13,8 +10,7 @@ class TerminalSession {
   final String name;
   final String? initialDirectory;
   final Terminal terminal;
-  SSHClient? client;
-  SSHSession? shell;
+  bool isConnected = false;
   SessionState state = SessionState.disconnected;
   String? lastError;
 
@@ -28,20 +24,117 @@ class TerminalSession {
   final _dataController = StreamController<String>.broadcast();
   Stream<String> get dataStream => _dataController.stream;
 
-  void write(String data) {
-    if (state == SessionState.connected && shell != null) {
-      shell!.write(Uint8List.fromList(utf8.encode(data)));
-    } else {
+  // Reference to TermuxBridge for command execution
+  TermuxBridge? bridge;
+
+  // Input buffer for command line
+  String _inputBuffer = '';
+  bool _isProcessingInput = false;
+
+  Future<void> write(String data) async {
+    if (state != SessionState.connected || bridge == null) {
       _pendingCommands.add(data);
       terminal.write('\x1B[1;30m[IDE] Command queued: $data\x1B[0m\r\n');
+      return;
+    }
+
+    if (_isProcessingInput) {
+      // Very basic queueing - in real app we'd use a more robust queue
+      await Future.delayed(const Duration(milliseconds: 50));
+      return write(data);
+    }
+
+    _isProcessingInput = true;
+
+    try {
+      // Process each character
+      for (int i = 0; i < data.length; i++) {
+        final char = data[i];
+        final codeUnit = char.codeUnitAt(0);
+
+        if (char == '\r' || char == '\n') {
+          // Deduplicate \r\n or \n\r within the same batch
+          if (i + 1 < data.length &&
+              (data[i + 1] == '\r' || data[i + 1] == '\n') &&
+              data[i] != data[i + 1]) {
+            i++;
+          }
+
+          terminal.write('\r\n');
+          final cmd = _inputBuffer.trim();
+          _inputBuffer = '';
+
+          if (cmd.isNotEmpty) {
+            await _executeCommand(cmd);
+            _showPrompt();
+          } else {
+            // Just showed a new line for empty enter, show prompt again
+            _showPrompt();
+          }
+        } else if (codeUnit == 127 || codeUnit == 8) {
+          // Backspace (127 = DEL, 8 = BS)
+          if (_inputBuffer.isNotEmpty) {
+            _inputBuffer = _inputBuffer.substring(0, _inputBuffer.length - 1);
+            terminal.write('\b \b'); // Move back, clear, move back
+          }
+        } else if (codeUnit == 9) {
+          // Tab - add spaces (basic tab support)
+          _inputBuffer += '    ';
+          terminal.write('    ');
+        } else if (codeUnit >= 32) {
+          // Printable character (including space which is 32)
+          _inputBuffer += char;
+          terminal.write(char);
+        }
+        // Ignore other control characters
+      }
+    } finally {
+      _isProcessingInput = false;
+    }
+  }
+
+  void _showPrompt() {
+    terminal.write('\$ ');
+  }
+
+  Future<void> _executeCommand(String command) async {
+    if (bridge == null) return;
+
+    // Echo local command immediately? No, we already typed it.
+    // terminal.write(command + '\r\n');
+
+    // Run via bridge
+    try {
+      // If we have an initial directory, we might want to prepend "cd <dir> &&"
+      // BUT for a persistent session simulation, we should track CWD.
+      // For now, let's just attempt global execution.
+      // If we are implementing a 'shell', we need to track state.
+      // Since TermuxBridge is stateless individually, each command runs in fresh shell.
+      // To simulate session, we might need a complex wrapper.
+      // simple approach: just run it. directory won't persist between commands unless we chain them.
+      // This is a known limitation of 'run command' intent vs SSH.
+      // But we can improve by maintaining a CWD variable in Dart and prepending it.
+
+      // Attempt to leverage CWD if we have one
+      String finalCmd = command;
+      // Note: Updating CWD based on 'cd' command is tricky without shell feedback.
+      // Let's keep it simple: execute.
+
+      var workingDir = initialDirectory;
+
+      await for (final output in bridge!
+          .executeCommandStream(finalCmd, workingDirectory: workingDir)) {
+        onDataReceived(output);
+      }
+    } catch (e) {
+      onDataReceived('Error: $e\r\n');
     }
   }
 
   void _flushPending() {
-    if (shell != null) {
+    if (_pendingCommands.isNotEmpty) {
       for (final cmd in _pendingCommands) {
-        terminal.write('\x1B[1;33m[IDE] Executing queued: $cmd\x1B[0m\r\n');
-        shell!.write(Uint8List.fromList(utf8.encode('$cmd\n')));
+        _executeCommand(cmd.trim());
       }
       _pendingCommands.clear();
     }
@@ -119,14 +212,14 @@ class TerminalSession {
   }
 
   TerminalSession({required this.id, required this.name, this.initialDirectory})
-    : terminal = Terminal(maxLines: 10000),
-      controller = TerminalController();
+      : terminal = Terminal(maxLines: 10000),
+        controller = TerminalController();
 
   final TerminalController controller;
 
   void dispose() {
-    client?.close();
-    client = null;
+    bridge = null;
+    isConnected = false;
     state = SessionState.disconnected;
     _dataController.close();
   }
@@ -207,92 +300,36 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
     // Small delay to ensure UI is ready to show the terminal
     await Future.delayed(const Duration(milliseconds: 100));
     session.onDataReceived(
-      '\x1B[1;36mConnecting to Termux via SSH...\x1B[0m\r\n',
-    );
+        '\x1B[1;36mConnecting to Termux via Bridge...\x1B[0m\r\n');
 
     try {
-      final socket = await SSHSocket.connect(
-        '127.0.0.1',
-        8022,
-      ).timeout(const Duration(seconds: 3));
-
-      session.onDataReceived('Connected! Authenticating...\r\n');
-
-      final bridge = ref.read(termuxBridgeProvider);
-      final uid = await bridge.getTermuxUid();
-      String username = 'u0_a251';
-
-      if (uid != null && uid >= 10000) {
-        username = 'u0_a${uid - 10000}';
-      }
-
-      final client = SSHClient(
-        socket,
-        username: username,
-        onPasswordRequest: () => '123456',
-      );
-      session.client = client;
-
-      final width = session.terminal.viewWidth > 0
-          ? session.terminal.viewWidth
-          : 80;
-      final height = session.terminal.viewHeight > 0
-          ? session.terminal.viewHeight
-          : 24;
-
-      final shell = await client.shell(
-        pty: SSHPtyConfig(width: width, height: height, type: 'xterm-256color'),
-      );
-      session.shell = shell;
-      // Note: state remains .connecting during initial setup (cd)
+      // Create TermuxBridge instance
+      final bridge = TermuxBridge();
+      session.bridge = bridge;
 
       session.onDataReceived(
-        '\x1B[32m✔ Connected to Termux\x1B[0m\r\n',
-      ); // Listen for data
+          '\x1B[32m✔ Connected to Termux (via RUN_COMMAND)\x1B[0m\r\n');
 
-      shell.stdout.listen((data) {
-        session.onDataReceived(utf8.decode(data, allowMalformed: true));
-      });
+      // Show initial directory
+      final homeDir =
+          session.initialDirectory ?? '/data/data/com.termux/files/home';
+      session
+          .onDataReceived('\x1B[1;34mWorking directory: $homeDir\x1B[0m\r\n');
+      session.onDataReceived('\r\n\x1B[1;33m\$ \x1B[0m');
 
-      shell.stderr.listen((data) {
-        session.onDataReceived(utf8.decode(data, allowMalformed: true));
-      });
-
-      // Wire up terminal input
+      // Wire up terminal input - execute commands when user presses Enter
       session.terminal.onOutput = (data) {
-        if (session.shell != null) {
-          session.shell!.write(Uint8List.fromList(utf8.encode(data)));
-        }
+        session.write(data);
       };
 
-      // Handle terminal resize
-      session.terminal.onResize = (w, h, pw, ph) {
-        if (session.shell != null) {
-          session.shell!.resizeTerminal(w, h);
-        }
-      };
-
-      // Handle session termination
-      shell.done.then((_) {
-        session.state = SessionState.disconnected;
-        state = state.copyWith();
-      });
-
-      // 4. Send initial working directory if set
-      if (session.initialDirectory != null) {
-        shell.write(
-          Uint8List.fromList(utf8.encode('cd "${session.initialDirectory}"\n')),
-        );
-      }
-
-      // 5. Flush any commands sent while connecting
-      // We do this AFTER initial directory setup to avoid collisions
+      // Flush any pending commands
       session._flushPending();
 
+      session.isConnected = true;
       session.state = SessionState.connected;
       state = state.copyWith();
     } catch (e) {
-      session.terminal.write('\x1B[31mSSH Error: $e\x1B[0m\r\n');
+      session.terminal.write('\x1B[31mBridge Error: $e\x1B[0m\r\n');
       session.state = SessionState.failed;
       session.lastError = e.toString();
       state = state.copyWith();
@@ -302,5 +339,5 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
 
 final terminalSessionsProvider =
     NotifierProvider<TerminalSessionNotifier, TerminalSessionsState>(
-      TerminalSessionNotifier.new,
-    );
+  TerminalSessionNotifier.new,
+);

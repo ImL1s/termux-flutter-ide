@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
 import '../theme/app_theme.dart';
-import '../termux/termux_providers.dart';
+
 import 'file_operations.dart';
+import '../core/scrollable_with_scrollbar.dart';
 
 class FileTreeWidget extends ConsumerStatefulWidget {
   const FileTreeWidget({super.key});
@@ -100,7 +101,7 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     final isExpanded = _expandedDirs.contains(projectPath);
     final items = _cachedContents[projectPath];
 
-    return ListView(
+    return ListViewWithScrollbar(
       padding: EdgeInsets.zero,
       children: [
         // Root Project Folder Node
@@ -201,12 +202,12 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DragTarget<FileItem>(
-          onWillAccept: (data) => _canMove(data, item),
-          onAccept: (data) => _moveFile(data, item),
+          onWillAcceptWithDetails: (details) => _canMove(details.data, item),
+          onAcceptWithDetails: (details) => _moveFile(details.data, item),
           builder: (context, candidates, rejects) {
             final isHovered = candidates.isNotEmpty;
             return Container(
-              color: isHovered ? AppTheme.primary.withOpacity(0.2) : null,
+              color: isHovered ? AppTheme.primary.withValues(alpha: 0.2) : null,
               child: _buildItemRow(
                 item: item,
                 isExpanded: isExpanded,
@@ -270,71 +271,14 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     required double indent,
     bool isExpanded = false,
   }) {
-    final content = InkWell(
+    return _HoverableFileItem(
+      item: item,
       onTap: onTap,
-      child: Padding(
-        padding: EdgeInsets.only(left: indent + 8, right: 0, top: 2, bottom: 2),
-        child: Row(
-          children: [
-            leading,
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                item.name,
-                style: const TextStyle(fontSize: 13),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            // Context Menu Button
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
-                onPressed: () => _showContextMenu(item),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    return Dismissible(
-      key: Key(item.path),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        color: Colors.red,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 16),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      confirmDismiss: (direction) => _confirmDelete(item),
-      child: LongPressDraggable<FileItem>(
-        data: item,
-        feedback: Material(
-          color: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppTheme.background.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppTheme.surfaceVariant),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.insert_drive_file,
-                    size: 16, color: Colors.white),
-                const SizedBox(width: 8),
-                Text(item.name, style: const TextStyle(color: Colors.white)),
-              ],
-            ),
-          ),
-        ),
-        childWhenDragging: Opacity(opacity: 0.5, child: content),
-        child: content,
-      ),
+      onDoubleTap: item.isDirectory ? null : () => _openFile(item),
+      onContextMenu: () => _showContextMenu(item),
+      onDelete: () => _confirmDelete(item),
+      leading: leading,
+      indent: indent,
     );
   }
 
@@ -346,8 +290,9 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     final srcDir = src.path.substring(0, src.path.lastIndexOf('/'));
     if (srcDir == dest.path) return false; // Already in dest
 
-    if (dest.path.startsWith(src.path))
+    if (dest.path.startsWith(src.path)) {
       return false; // Can't move parent to child
+    }
 
     return true;
   }
@@ -605,27 +550,37 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
   }
 
   void _openProject() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppTheme.background,
-      builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.8,
-        child: DirectoryBrowser(
-          initialPath: ref.read(currentDirectoryProvider),
-          onSelect: (path) {
-            ref.read(currentDirectoryProvider.notifier).setPath(path);
-            ref.read(projectPathProvider.notifier).set(path);
-            _refresh();
-            // Close both the dialog and the drawer (if in mobile mode)
-            Navigator.pop(context);
-            if (Navigator.canPop(context)) {
+    try {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AppTheme.background,
+        builder: (context) => SizedBox(
+          height: MediaQuery.of(context).size.height * 0.8,
+          child: DirectoryBrowser(
+            initialPath: ref.read(currentDirectoryProvider),
+            onSelect: (path) {
+              ref.read(currentDirectoryProvider.notifier).setPath(path);
+              ref.read(projectPathProvider.notifier).set(path);
+              _refresh();
+              // Close both the dialog and the drawer (if in mobile mode)
               Navigator.pop(context);
-            }
-          },
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              }
+            },
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      print('Error opening project browser: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to open folder browser: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   IconData _getFileIcon(String name) {
@@ -700,10 +655,9 @@ class _DirectoryBrowserState extends ConsumerState<DirectoryBrowser> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString().contains('Permission denied')
-              ? 'Permission Denied'
-              : 'Error: $e';
+          _errorMessage = e.toString();
         });
+        print('DirectoryBrowser error: $e');
       }
     }
   }
@@ -724,6 +678,70 @@ class _DirectoryBrowserState extends ConsumerState<DirectoryBrowser> {
     } else if (_currentPath != '/') {
       _navigateTo('/');
     }
+  }
+
+  void _retry() {
+    _loadDirectory();
+  }
+
+  Widget _buildErrorView() {
+    final err = _errorMessage?.toLowerCase() ?? '';
+    final isPermissionError = err.contains('permission denied') ||
+        err.contains('permission not granted');
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isPermissionError ? Icons.lock_outline : Icons.error_outline,
+              size: 48,
+              color: Colors.red[300],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              isPermissionError ? 'Access Denied' : 'Error Loading Directory',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage ?? 'Unknown error',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _retry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+                if (isPermissionError) ...[
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      // TODO: Trigger Termux setup storage or fix permissions
+                      // For now, retry is the best options or guide user
+                      _retry();
+                    },
+                    icon: const Icon(Icons.settings),
+                    label: const Text('Fix Permissions'),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showCreateFolderDialog() {
@@ -819,19 +837,21 @@ class _DirectoryBrowserState extends ConsumerState<DirectoryBrowser> {
                   ? _buildErrorView()
                   : _items == null || _items!.isEmpty
                       ? const Center(child: Text('No subdirectories'))
-                      : ListView.builder(
-                          itemCount: _items!.length,
-                          itemBuilder: (context, index) {
-                            final item = _items![index];
-                            return ListTile(
-                              key: Key('folder_item_${item.name}'),
-                              leading: const Icon(Icons.folder,
-                                  color: AppTheme.syntaxType),
-                              title: Text(item.name),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () => _navigateTo(item.path),
-                            );
-                          },
+                      : ScrollableWithScrollbar(
+                          child: ListView.builder(
+                            itemCount: _items!.length,
+                            itemBuilder: (context, index) {
+                              final item = _items![index];
+                              return ListTile(
+                                key: Key('folder_item_${item.name}'),
+                                leading: const Icon(Icons.folder,
+                                    color: AppTheme.syntaxType),
+                                title: Text(item.name),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _navigateTo(item.path),
+                              );
+                            },
+                          ),
                         ),
         ),
         // Action buttons
@@ -868,55 +888,120 @@ class _DirectoryBrowserState extends ConsumerState<DirectoryBrowser> {
       ],
     );
   }
+}
 
-  Widget _buildErrorView() {
-    final isPermissionDenied = _errorMessage == 'Permission Denied';
+/// A file tree item with hover effects, double-click, and right-click support
+class _HoverableFileItem extends StatefulWidget {
+  final FileItem item;
+  final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
+  final VoidCallback onContextMenu;
+  final Future<bool?> Function() onDelete;
+  final Widget leading;
+  final double indent;
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isPermissionDenied ? Icons.lock_outline : Icons.error_outline,
-              size: 48,
-              color: isPermissionDenied ? Colors.orange : Colors.red,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage ?? 'Unknown error',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16),
-            ),
-            if (isPermissionDenied) ...[
-              const SizedBox(height: 24),
-              const Text(
-                'Termux needs shared storage permission to access /sdcard.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+  const _HoverableFileItem({
+    required this.item,
+    required this.onTap,
+    this.onDoubleTap,
+    required this.onContextMenu,
+    required this.onDelete,
+    required this.leading,
+    required this.indent,
+  });
+
+  @override
+  State<_HoverableFileItem> createState() => _HoverableFileItemState();
+}
+
+class _HoverableFileItemState extends State<_HoverableFileItem> {
+  bool _isHovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovering = true),
+      onExit: (_) => setState(() => _isHovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onDoubleTap: widget.onDoubleTap,
+        onSecondaryTap: widget.onContextMenu,
+        onLongPress: widget.onContextMenu,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 100),
+          color: _isHovering
+              ? AppTheme.surfaceVariant.withValues(alpha: 0.5)
+              : Colors.transparent,
+          padding: EdgeInsets.only(
+              left: widget.indent + 8, right: 0, top: 4, bottom: 4),
+          child: Row(
+            children: [
+              widget.leading,
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  widget.item.name,
+                  style: const TextStyle(fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ref.read(termuxBridgeProvider).setupStorage();
-                  // Show tooltip or snackbar
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text(
-                            'Launched setup in Termux. Please allow permission there.')),
-                  );
-                },
-                icon: const Icon(Icons.storage),
-                label: const Text('Setup Storage'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.secondary,
-                  foregroundColor: Colors.black,
+              // Context Menu Button (visible on hover)
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 100),
+                opacity: _isHovering ? 1.0 : 0.0,
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.more_vert,
+                        size: 16, color: Colors.grey),
+                    onPressed: widget.onContextMenu,
+                  ),
                 ),
               ),
             ],
-          ],
+          ),
         ),
+      ),
+    );
+
+    return Dismissible(
+      key: Key(widget.item.path),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (direction) => widget.onDelete(),
+      child: LongPressDraggable<FileItem>(
+        data: widget.item,
+        feedback: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.background.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: AppTheme.surfaceVariant),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.insert_drive_file,
+                    size: 16, color: Colors.white),
+                const SizedBox(width: 8),
+                Text(widget.item.name,
+                    style: const TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.5, child: content),
+        child: content,
       ),
     );
   }

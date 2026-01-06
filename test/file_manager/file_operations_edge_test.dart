@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:termux_flutter_ide/file_manager/file_operations.dart';
 import 'package:termux_flutter_ide/termux/ssh_service.dart';
@@ -42,7 +40,7 @@ void main() {
 
   setUp(() {
     mockSSH = MockSSHService();
-    fileOps = FileOperations(mockSSH);
+    fileOps = SshFileOperations(mockSSH);
   });
 
   group('FileOperations Edge Cases', () {

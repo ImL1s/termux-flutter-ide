@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import '../termux/termux_providers.dart';
+import '../termux/connection_diagnostics.dart';
+import '../termux/ssh_service.dart';
 import 'setup_service.dart';
+import 'environment_check_step.dart';
 
 class SetupWizardPage extends ConsumerStatefulWidget {
   const SetupWizardPage({super.key});
@@ -104,7 +107,7 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
                         ),
                 ),
               ),
-              if (step != SetupStep.x11) // Last step before complete
+              if (step != SetupStep.complete) // Last step before complete
                 Container(
                   width: 40,
                   height: 2,
@@ -161,10 +164,319 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
     );
   }
 
+  /// Show diagnostics dialog with error-specific guidance
+  void _showDiagnosticsDialog(
+      BuildContext context, ConnectionDiagnostics diag) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2E),
+        title: Row(
+          children: [
+            Icon(
+              diag.errorType == ConnectionErrorType.authenticationFailed
+                  ? Icons.lock_outline
+                  : Icons.error_outline,
+              color: const Color(0xFFF38BA8),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                diag.errorTitle,
+                style: const TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                diag.explanation,
+                style: const TextStyle(color: Color(0xFFBAC2DE), fontSize: 14),
+              ),
+              if (diag.fixCommand.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  '請在 Termux 執行：',
+                  style: TextStyle(
+                    color: Color(0xFFA6ADC8),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF11111B),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF313244)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: SelectableText(
+                          diag.fixCommand,
+                          style: const TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 11,
+                            color: Color(0xFFA6E3A1),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.copy, size: 16),
+                        color: const Color(0xFF6C7086),
+                        onPressed: () {
+                          Clipboard.setData(
+                              ClipboardData(text: diag.fixCommand));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('已複製'),
+                                duration: Duration(seconds: 1)),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF89B4FA).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: const Color(0xFF89B4FA).withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline,
+                        color: Color(0xFF89B4FA), size: 20),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        '執行後請返回這裡點擊「重試連線」',
+                        style:
+                            TextStyle(color: Color(0xFF89B4FA), fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ref.read(termuxBridgeProvider).openTermux();
+            },
+            child: const Text('開啟 Termux'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF89B4FA),
+              foregroundColor: const Color(0xFF1E1E2E),
+            ),
+            child: const Text('我知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Builds a username preview section with edit capability
+  Widget _buildUsernamePreviewSection() {
+    return FutureBuilder<int?>(
+      future: ref.read(termuxBridgeProvider).getTermuxUid(),
+      builder: (context, snapshot) {
+        String? detectedUsername;
+        int? uid;
+
+        if (snapshot.hasData && snapshot.data != null) {
+          uid = snapshot.data!;
+          detectedUsername = 'u0_a${uid - 10000}';
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF313244),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: detectedUsername != null
+                  ? const Color(0xFFA6E3A1).withOpacity(0.5)
+                  : const Color(0xFFF9E2AF).withOpacity(0.5),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    detectedUsername != null
+                        ? Icons.person
+                        : Icons.person_search,
+                    color: detectedUsername != null
+                        ? const Color(0xFFA6E3A1)
+                        : const Color(0xFFF9E2AF),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    detectedUsername != null ? '偵測到的 SSH 用戶名' : '無法自動偵測用戶名',
+                    style: TextStyle(
+                      color: detectedUsername != null
+                          ? const Color(0xFFA6E3A1)
+                          : const Color(0xFFF9E2AF),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (uid != null)
+                    Text(
+                      'UID: $uid',
+                      style: const TextStyle(
+                        color: Color(0xFF6C7086),
+                        fontSize: 11,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E2E),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        detectedUsername ?? '請手動輸入',
+                        style: TextStyle(
+                          color: detectedUsername != null
+                              ? Colors.white
+                              : const Color(0xFF6C7086),
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () =>
+                        _showUsernameEditDialog(context, detectedUsername),
+                    icon: const Icon(Icons.edit, size: 14),
+                    label: const Text('修改'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF89B4FA),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '💡 如果連線失敗，請在 Termux 執行 whoami 確認用戶名',
+                style: TextStyle(
+                  color: Color(0xFF6C7086),
+                  fontSize: 10,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Show dialog to edit username manually
+  void _showUsernameEditDialog(BuildContext context, String? currentUsername) {
+    final controller = TextEditingController(text: currentUsername);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2E),
+        title: const Text('設定 SSH 用戶名', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '請輸入您在 Termux 執行 whoami 顯示的用戶名：',
+              style: TextStyle(color: Color(0xFFBAC2DE), fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              style: const TextStyle(
+                  color: Colors.white, fontFamily: 'JetBrains Mono'),
+              decoration: InputDecoration(
+                hintText: '例如: u0_a1192',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: const Color(0xFF313244),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final username = controller.text.trim();
+              if (username.isNotEmpty) {
+                await SSHService.saveUsername(username);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('已儲存用戶名: $username')),
+                  );
+                  // Force rebuild
+                  setState(() {});
+                }
+              }
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF89B4FA),
+              foregroundColor: const Color(0xFF1E1E2E),
+            ),
+            child: const Text('儲存'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStepContent(SetupState state) {
     switch (state.currentStep) {
       case SetupStep.welcome:
         return _buildWelcomeStep();
+      case SetupStep.environmentCheck:
+        return _buildEnvironmentCheckStep();
       case SetupStep.termux:
         return _buildTermuxStep(state);
       case SetupStep.ssh:
@@ -174,8 +486,7 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
       case SetupStep.flutter:
         return _buildFlutterStep(state);
       case SetupStep.x11:
-        // If we added X11 step UI
-        return const SizedBox();
+        return _buildX11Step();
       case SetupStep.complete:
         return _buildCompleteStep();
     }
@@ -268,6 +579,20 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
     );
   }
 
+  /// Build the environment check step
+  Widget _buildEnvironmentCheckStep() {
+    return EnvironmentCheckStep(
+      onAllPassed: () {
+        // All checks passed, proceed to next step
+        ref.read(setupServiceProvider.notifier).nextStep();
+      },
+      onContinueAnyway: () {
+        // User wants to continue despite warnings
+        ref.read(setupServiceProvider.notifier).nextStep();
+      },
+    );
+  }
+
   Widget _buildTermuxStep(SetupState state) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -304,6 +629,120 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
         TextButton(
           onPressed: () => ref.read(setupServiceProvider.notifier).nextStep(),
           child: const Text('我已安裝，繼續下一步'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildX11Step() {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.desktop_windows, size: 64, color: Color(0xFFCBA6F7)),
+          const SizedBox(height: 24),
+          const Text(
+            '圖形介面 (X11) 設定',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFCDD6F4),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '為了顯示 Flutter 應用程式的畫面，\n需要安裝 X11 顯示伺服器。',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFFBAC2DE), height: 1.5),
+          ),
+          const SizedBox(height: 32),
+          Container(
+            padding: const EdgeInsets.all(20),
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E2E),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF313244)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSection(
+                  '1. 必需的依賴套件',
+                  '請在 Termux 中執行：',
+                ),
+                const SizedBox(height: 8),
+                _buildCodeBlock(
+                    'pkg install x11-repo && pkg install termux-x11-nightly pulseaudio -y'),
+                const SizedBox(height: 24),
+                _buildSection(
+                  '2. 安裝 Termux:X11 App',
+                  '請下載並安裝配套的 Android 應用程式：',
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
+                  onPressed: () => launchUrl(
+                      Uri.parse(
+                          'https://github.com/termux/termux-x11/releases'),
+                      mode: LaunchMode.externalApplication),
+                  icon: const Icon(Icons.download),
+                  label: const Text('前往 GitHub 下載'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF89B4FA),
+                    foregroundColor: const Color(0xFF1E1E2E),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton(
+                onPressed: () =>
+                    ref.read(setupServiceProvider.notifier).nextStep(),
+                child: const Text('略過 (僅命令列)'),
+              ),
+              const SizedBox(width: 16),
+              FilledButton.icon(
+                onPressed: () =>
+                    ref.read(setupServiceProvider.notifier).nextStep(),
+                icon: const Icon(Icons.check),
+                label: const Text('我已完成設定，下一步'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFA6E3A1),
+                  foregroundColor: const Color(0xFF1E1E2E),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSection(String title, String subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: Color(0xFFBAC2DE),
+            fontSize: 13,
+          ),
         ),
       ],
     );
@@ -388,29 +827,145 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
                         fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
+
+                  // Username Preview/Edit Section
+                  _buildUsernamePreviewSection(),
+
+                  const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: state.isInstalling
                         ? null
                         : () async {
+                            final proceed = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('開始自動配置'),
+                                content: const Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('IDE 將在背景嘗試設定 Termux SSH 環境。'),
+                                    SizedBox(height: 12),
+                                    Text('請留意通知列，若有 Termux 權限請求請允許。',
+                                        style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('取消'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('開始配置'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (proceed != true) return;
+
                             ref
                                 .read(setupServiceProvider.notifier)
                                 .setInstalling(true);
+
+                            // Step 1: Send setup command (fire-and-forget)
                             await ref
                                 .read(termuxBridgeProvider)
                                 .setupTermuxSSH();
-                            // Wait a bit for sshd to actually start
-                            await Future.delayed(const Duration(seconds: 2));
-                            await ref
-                                .read(setupServiceProvider.notifier)
-                                .checkEnvironment();
-                            ref
-                                .read(setupServiceProvider.notifier)
-                                .setInstalling(false);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('已嘗試自動配置，請檢查連線狀態')),
-                              );
+
+                            // Step 2: Wait for sshd to start
+                            await Future.delayed(const Duration(seconds: 4));
+
+                            // Step 3: VERIFY by actually trying SSH connection
+                            final sshService = ref.read(sshServiceProvider);
+                            try {
+                              await sshService.connect();
+
+                              // Step 4: Generate and deploy SSH keys for future connections
+                              try {
+                                final keyManager = sshService.keyManager;
+                                if (!await keyManager.hasKeys()) {
+                                  // Generate keys in Termux and retrieve them
+                                  final keyGenCmd =
+                                      keyManager.getKeyGenerationCommand();
+                                  final output =
+                                      await sshService.execute(keyGenCmd);
+
+                                  // Parse and store the keys
+                                  final stored = await keyManager
+                                      .parseAndStoreKeys(output);
+                                  if (stored) {
+                                    print(
+                                        'SetupWizard: SSH keys generated and stored successfully');
+                                  } else {
+                                    print(
+                                        'SetupWizard: Key generation output parsing failed, password auth will be used');
+                                  }
+                                }
+                              } catch (keyError) {
+                                print(
+                                    'SetupWizard: Key generation failed: $keyError, password auth will be used');
+                              }
+
+                              // SUCCESS!
+                              ref
+                                  .read(setupServiceProvider.notifier)
+                                  .setInstalling(false);
+                              await ref
+                                  .read(setupServiceProvider.notifier)
+                                  .checkEnvironment();
+
+                              if (context.mounted) {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    backgroundColor: const Color(0xFF1E1E2E),
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.check_circle,
+                                            color: Color(0xFFA6E3A1)),
+                                        SizedBox(width: 12),
+                                        Text('連線成功！',
+                                            style:
+                                                TextStyle(color: Colors.white)),
+                                      ],
+                                    ),
+                                    content: const Text(
+                                      'SSH 環境已成功設定，您可以繼續下一步。',
+                                      style:
+                                          TextStyle(color: Color(0xFFBAC2DE)),
+                                    ),
+                                    actions: [
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor:
+                                              const Color(0xFFA6E3A1),
+                                          foregroundColor:
+                                              const Color(0xFF1E1E2E),
+                                        ),
+                                        child: const Text('太好了'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              // FAILED - show diagnostics
+                              ref
+                                  .read(setupServiceProvider.notifier)
+                                  .setInstalling(false);
+
+                              final diagService = ConnectionDiagnosticsService(
+                                  ref.read(termuxBridgeProvider));
+                              final diag = diagService.fromError(e);
+
+                              if (context.mounted) {
+                                _showDiagnosticsDialog(context, diag);
+                              }
                             }
                           },
                     icon: state.isInstalling
@@ -665,14 +1220,28 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
 
           const SizedBox(height: 16),
 
-          // Secondary action - Check again
-          TextButton.icon(
-            onPressed: () =>
-                ref.read(setupServiceProvider.notifier).checkEnvironment(),
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('重新檢測'),
-            style:
-                TextButton.styleFrom(foregroundColor: const Color(0xFFBAC2DE)),
+          // Secondary actions
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton.icon(
+                onPressed: () =>
+                    ref.read(setupServiceProvider.notifier).checkEnvironment(),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('重新檢測'),
+                style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFBAC2DE)),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: () =>
+                    ref.read(setupServiceProvider.notifier).nextStep(),
+                icon: const Icon(Icons.skip_next, size: 18),
+                label: const Text('我已安裝 (跳過)'),
+                style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFBAC2DE)),
+              ),
+            ],
           ),
 
           const SizedBox(height: 32),

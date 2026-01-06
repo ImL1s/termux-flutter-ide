@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:termux_flutter_ide/termux/termux_providers.dart';
+import 'package:termux_flutter_ide/termux/ssh_service.dart';
 
 /// Dialog shown when SSH authentication fails
 /// Provides user with clear instructions to fix the issue
@@ -15,7 +16,12 @@ class SSHErrorDialog extends ConsumerWidget {
     required this.errorMessage,
   });
 
-  static const String _fixCommand = 'pkg install -y openssh && passwd && sshd';
+  static const String _fixCommand =
+      'echo "allow-external-apps=true" >> ~/.termux/termux.properties && '
+      'termux-reload-settings && '
+      'pkg install -y openssh && '
+      'echo -e "termux\\ntermux" | passwd && '
+      'sshd';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,23 +41,83 @@ class SSHErrorDialog extends ConsumerWidget {
     // --- CASE 1: Authentication Error ---
     if (isAuthError) {
       titleText = '驗證失敗 (Authentication Failed)';
-      explanation = 'Termux 密碼錯誤或是尚未設定。App 預設使用 "termux" 作為密碼。\n請按照以下步驟重設密碼：';
+      explanation = 'Termux 配置可能未完成 (例如密碼驗證被停用)。\n您可以嘗試「自動修復」或手動設定：';
       steps = [
+        // Auto Fix Option
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF313244),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFA6E3A1).withOpacity(0.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.auto_fix_high, color: Color(0xFFA6E3A1), size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    '推薦：自動修復配置',
+                    style: TextStyle(
+                      color: Color(0xFFA6E3A1),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                ' IDE 將自動嘗試：\n • 啟用 sshd_config 密碼驗證\n • 重設密碼為 "termux"\n • 重啟 SSH 服務',
+                style:
+                    TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    // Show processing snackbar
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('正在修復 SSH 配置... 請留意 Termux 權限請求'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+
+                    // Run comprehensive setup
+                    await ref.read(termuxBridgeProvider).setupTermuxSSH();
+
+                    // Trigger retry after short delay
+                    Future.delayed(const Duration(seconds: 3), onRetry);
+                  },
+                  icon: const Icon(Icons.build_circle, size: 18),
+                  label: const Text('執行自動修復'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFA6E3A1),
+                    foregroundColor: const Color(0xFF1E1E2E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        const Text('或手動排查：',
+            style: TextStyle(color: Colors.white54, fontSize: 12)),
+
+        // Manual Steps (Collapsed/Simplified)
         _buildStep(
           number: '1',
-          title: '開啟 Termux',
-          description: '點擊下方按鈕開啟 Termux 終端機',
+          title: '檢查用戶名',
+          description: 'Termux 執行 whoami (若非自動偵測值，請下方手動輸入)',
         ),
-        _buildStep(
-          number: '2',
-          title: '執行 passwd 指令',
-          description: '輸入 passwd 並按 Enter',
-        ),
-        _buildStep(
-          number: '3',
-          title: '設定密碼為 "termux"',
-          description: '輸入 termux (畫面不會顯示) 並按 Enter，然後再次輸入 termux 確認',
-        ),
+        // Username input section
+        _buildUsernameInputSection(context, ref),
       ];
     }
     // --- CASE 2: Connection Refused (SSHD not running) ---
@@ -290,6 +356,84 @@ class SSHErrorDialog extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// Builds a username input section for manual override
+  Widget _buildUsernameInputSection(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF313244),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF89B4FA).withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.person_outline, color: Color(0xFF89B4FA), size: 18),
+              SizedBox(width: 8),
+              Text(
+                '手動輸入用戶名 (選填)',
+                style: TextStyle(
+                  color: Color(0xFF89B4FA),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: '例如: u0_a1192',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    filled: true,
+                    fillColor: const Color(0xFF1E1E2E),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: () async {
+                  final username = controller.text.trim();
+                  if (username.isNotEmpty) {
+                    await SSHService.saveUsername(username);
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('已儲存用戶名: $username，正在重試連線...')),
+                      );
+                      onRetry();
+                    }
+                  }
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF89B4FA),
+                  foregroundColor: const Color(0xFF1E1E2E),
+                ),
+                child: const Text('儲存並重試'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

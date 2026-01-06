@@ -13,7 +13,7 @@ Future<void> showGitCloneDialog(BuildContext context, WidgetRef ref) async {
 
   await showDialog(
     context: context,
-    barrierDismissible: false,
+    barrierDismissible: true,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
         backgroundColor: AppTheme.background,
@@ -69,7 +69,7 @@ Future<void> showGitCloneDialog(BuildContext context, WidgetRef ref) async {
         ),
         actions: [
           TextButton(
-            onPressed: isCloning ? null : () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
           ElevatedButton(

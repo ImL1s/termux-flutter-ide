@@ -48,7 +48,7 @@ class FileTabsWidget extends ConsumerWidget {
   }
 }
 
-class _FileTab extends StatelessWidget {
+class _FileTab extends StatefulWidget {
   final String fileName;
   final bool isActive;
   final VoidCallback onTap;
@@ -64,60 +64,86 @@ class _FileTab extends StatelessWidget {
   });
 
   @override
+  State<_FileTab> createState() => _FileTabState();
+}
+
+class _FileTabState extends State<_FileTab> {
+  bool _isHovering = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: isActive
-              ? AppTheme.tabActiveBg
-              : AppTheme.tabInactiveBg, // Themed Tab BG
-          border: Border(
-            bottom: BorderSide(
-              color: isActive
-                  ? AppTheme.tabBorder
-                  : Colors.transparent, // Themed Active Border
-              width: 2,
-            ),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              _getFileIcon(fileName),
-              size: 16,
-              color: isActive
-                  ? AppTheme.secondary
-                  : AppTheme.textDisabled, // Themed Icon
-            ),
-            const SizedBox(width: 8),
-            Text(
-              fileName,
-              style: TextStyle(
-                color: isActive
-                    ? AppTheme.textPrimary
-                    : AppTheme.textSecondary, // Themed Text
-                fontSize: 12,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovering = true),
+      onExit: (_) => setState(() => _isHovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        // Middle-click to close (common convention)
+        onTertiaryTapUp: (_) => widget.onClose(),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 100),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: widget.isActive
+                ? AppTheme.tabActiveBg
+                : _isHovering
+                    ? AppTheme.surfaceVariant.withValues(alpha: 0.3)
+                    : AppTheme.tabInactiveBg,
+            border: Border(
+              bottom: BorderSide(
+                color:
+                    widget.isActive ? AppTheme.tabBorder : Colors.transparent,
+                width: 2,
               ),
             ),
-            const SizedBox(width: 8),
-            InkWell(
-              onTap: onClose,
-              child: isDirty
-                  ? const Icon(
-                      Icons.circle,
-                      size: 10,
-                      color: AppTheme.textPrimary,
-                    ) // Dirty Indicator
-                  : Icon(
-                      Icons.close,
-                      size: 14,
-                      color: AppTheme.textDisabled, // Themed Close Icon
-                    ),
-            ),
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _getFileIcon(widget.fileName),
+                size: 16,
+                color: widget.isActive
+                    ? AppTheme.secondary
+                    : AppTheme.textDisabled,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                widget.fileName,
+                style: TextStyle(
+                  color: widget.isActive
+                      ? AppTheme.textPrimary
+                      : AppTheme.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Close button with hover visibility
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: widget.onClose,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 100),
+                    opacity: widget.isDirty || _isHovering || widget.isActive
+                        ? 1.0
+                        : 0.3,
+                    child: widget.isDirty
+                        ? const Icon(
+                            Icons.circle,
+                            size: 10,
+                            color: AppTheme.textPrimary,
+                          )
+                        : const Icon(
+                            Icons.close,
+                            size: 14,
+                            color: AppTheme.textDisabled,
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

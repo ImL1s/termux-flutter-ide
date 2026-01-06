@@ -31,6 +31,12 @@ class MockBridge implements TermuxBridge {
   Future<bool> openTermuxSettings() async => true;
 
   @override
+  Future<bool> launchTermux() async => true;
+
+  @override
+  Future<String?> getTermuxPackageInstaller() async => 'com.termux';
+
+  @override
   Future<TermuxResult> setupTermuxSSH() async =>
       TermuxResult(success: true, exitCode: 0, stdout: '', stderr: '');
 
@@ -69,10 +75,30 @@ class MockBridge implements TermuxBridge {
       {String? workingDirectory}) async* {
     yield '';
   }
+
+  @override
+  Future<ExternalAppsStatus> checkExternalAppsAllowed() async =>
+      ExternalAppsStatus.allowed;
+
+  @override
+  Future<TermuxResult> enableExternalApps() async =>
+      TermuxResult(success: true, exitCode: 0, stdout: '', stderr: '');
+
+  @override
+  Future<bool> openBatteryOptimizationSettings() async => true;
+
+  @override
+  Future<bool> canDrawOverlays() async => true;
+
+  @override
+  Future<bool> checkSSHServiceStatus() async => true;
+
+  @override
+  Future<bool> checkTermuxPrefix() async => true;
 }
 
 // Mock FileOperations
-class MockFileOperations extends FileOperations {
+class MockFileOperations extends SshFileOperations {
   // Pass a dummy SSHService to super, assuming it won't be used due to overrides
   MockFileOperations() : super(SSHService(MockBridge()));
 

@@ -5,13 +5,20 @@ import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:termux_flutter_ide/termux/termux_providers.dart';
+import 'package:termux_flutter_ide/settings/settings_providers.dart';
 import 'termux_bridge.dart';
+import 'connection_diagnostics.dart';
+import 'ssh_key_manager.dart';
+import 'ssh_connection_factory.dart';
 
 /// Manages the global SSH connection to Termux
 class SSHService {
   SSHClient? _client;
   final TermuxBridge _bridge;
+  late final ConnectionDiagnosticsService _diagnosticsService;
+  Future<void>? _connectionFuture;
 
   // Stream controller for connection status
   final _statusController = StreamController<SSHStatus>.broadcast();
@@ -19,9 +26,28 @@ class SSHService {
   SSHStatus _currentStatus = SSHStatus.disconnected;
   SSHStatus get currentStatus => _currentStatus;
 
+  // Last diagnostics result for error display
+  ConnectionDiagnostics? _lastDiagnostics;
+  ConnectionDiagnostics? get lastDiagnostics => _lastDiagnostics;
+
+  // Last attempted username for debugging
+  String? _lastAttemptedUsername;
+  String? get lastAttemptedUsername => _lastAttemptedUsername;
+
   SSHService(this._bridge) {
+    _diagnosticsService = ConnectionDiagnosticsService(_bridge);
+    _keyManager = SSHKeyManager();
+    _connectionFactory = SSHConnectionFactory(_bridge, _keyManager);
     _statusController.add(_currentStatus);
   }
+
+  // SSH Key Manager for key-based authentication
+  late final SSHKeyManager _keyManager;
+  SSHKeyManager get keyManager => _keyManager;
+
+  // Unified connection factory
+  late final SSHConnectionFactory _connectionFactory;
+  SSHConnectionFactory get connectionFactory => _connectionFactory;
 
   /// returns true if connected
   bool get isConnected => _client != null && !_client!.isClosed;
@@ -34,61 +60,62 @@ class SSHService {
   }
 
   Future<void> _attemptConnection() async {
-    // Determine username robustly
-    String username = 'u0_a251'; // Default fallback
-    try {
-      // 1. Try 'whoami' via bridge (most accurate)
-      print('SSHService: Resolving Termux username...');
-      final result = await _bridge.executeCommand('whoami');
-      if (result.success && result.stdout.trim().isNotEmpty) {
-        username = result.stdout.trim();
-        print('SSHService: Resolved username -> $username');
-      } else {
-        // 2. Fallback to UID math
-        print("SSHService: 'whoami' failed, falling back to UID math...");
-        final uid = await _bridge.getTermuxUid();
-        if (uid != null) {
-          username = 'u0_a${uid - 10000}';
-        }
-      }
-    } catch (e) {
-      print('SSHService: Failed to resolve username: $e');
-    }
+    final username = await _connectionFactory.resolveUsername();
+    _lastAttemptedUsername = username;
 
     print('SSHService: Connecting to 127.0.0.1:8022 as $username...');
-    final socket = await SSHSocket.connect('127.0.0.1', 8022);
-    _client = SSHClient(
-      socket,
-      username: username,
-      onPasswordRequest: () => 'termux',
-    );
+    try {
+      final socket = await SSHSocket.connect('127.0.0.1', 8022);
+      _client = await _connectionFactory.createClient(socket);
+      await _client!.authenticated;
+    } catch (e) {
+      print('SSHService: Connection/Auth failed: $e');
+      if (e.toString().contains('SSHAuthFailError') ||
+          e.toString().contains('authentication')) {
+        throw 'SSHAuthFailError: Failed to authenticate as "$username".\nOriginal: $e';
+      }
+      rethrow;
+    }
+  }
 
-    await _client!.authenticated;
+  /// Save username for future connections
+  static Future<void> saveUsername(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(kTermuxUsernameKey, username);
+    print('SSHService: Saved username: $username');
+  }
+
+  /// Clear stored username
+  static Future<void> clearUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(kTermuxUsernameKey);
+    print('SSHService: Cleared stored username');
   }
 
   /// Ensure Termux SSH environment is bootstrapped (password set, sshd running)
   /// Returns true if bootstrap was triggered
-  Future<bool> ensureBootstrapped() async {
+  Future<bool> ensureBootstrapped({bool background = true}) async {
     print('SSHService: Ensuring Termux SSH is bootstrapped...');
     _updateStatus(SSHStatus.bootstrapping);
 
     try {
-      // Step 1: Wake up Termux
-      print('SSHService: [Bootstrap] Opening Termux...');
-      await _bridge.openTermux();
-      await Future.delayed(const Duration(seconds: 2));
+      if (!background) {
+        // Step 1: Wake up Termux (only if not background)
+        print('SSHService: [Bootstrap] Opening Termux...');
+        await _bridge.openTermux();
+        await Future.delayed(const Duration(seconds: 2));
+      }
 
       // Step 2: Setup SSH (install openssh, set password, start sshd)
+      // setupTermuxSSH now runs in background by default if configured in TermuxBridge
       print('SSHService: [Bootstrap] Setting up SSH environment...');
       final result = await _bridge.setupTermuxSSH();
       print(
           'SSHService: [Bootstrap] Setup result: ${result.success ? "OK" : result.stderr}');
 
-      // Step 3: Wait for chpasswd and SSHD to be ready
-      // Intent execution is asynchronous, so we need a longer wait
-      print(
-          'SSHService: [Bootstrap] Waiting for password setup and sshd (12s)...');
-      await Future.delayed(const Duration(seconds: 12));
+      // Step 3: Wait for sshd to be ready
+      print('SSHService: [Bootstrap] Waiting for sshd (5s)...');
+      await Future.delayed(const Duration(seconds: 5));
 
       return true;
     } catch (e) {
@@ -97,21 +124,52 @@ class SSHService {
     }
   }
 
+  /// Try to repair connection by restarting sshd in background
+  Future<void> fixConnection() async {
+    _updateStatus(SSHStatus.bootstrapping);
+    try {
+      // Run the full setup script (background) to fix password/keys/sshd
+      await _bridge.setupTermuxSSH();
+
+      // Wait a bit for sshd to start
+      await Future.delayed(const Duration(seconds: 4));
+
+      // Retry connection
+      connect();
+    } catch (e) {
+      print('SSHService: Fix failed: $e');
+      _updateStatus(SSHStatus.failed);
+    }
+  }
+
   /// Connect with automatic retry and bootstrap
   Future<void> connectWithRetry({int maxRetries = 3}) async {
     if (isConnected) return;
+    if (_connectionFuture != null) return _connectionFuture!;
 
+    _connectionFuture = _connectWithRetryInternal(maxRetries: maxRetries);
+    try {
+      await _connectionFuture;
+    } finally {
+      _connectionFuture = null;
+    }
+  }
+
+  Future<void> _connectWithRetryInternal({int maxRetries = 3}) async {
     _updateStatus(SSHStatus.connecting);
+    Object? lastError;
 
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         print('SSHService: Connection attempt $attempt/$maxRetries...');
         await _attemptConnection().timeout(const Duration(seconds: 8));
         _updateStatus(SSHStatus.connected);
+        _lastDiagnostics = null; // Clear diagnostics on success
         print('SSHService: Connected on attempt $attempt');
         return;
       } catch (e) {
         print('SSHService: Attempt $attempt failed: $e');
+        lastError = e;
 
         if (attempt < maxRetries) {
           // Failure: just wait and retry.
@@ -123,7 +181,10 @@ class SSHService {
       }
     }
 
-    // All retries exhausted
+    // All retries exhausted - capture diagnostics for UI
+    if (lastError != null) {
+      _lastDiagnostics = _diagnosticsService.fromError(lastError);
+    }
     _updateStatus(SSHStatus.failed);
     print('SSHService: All connection attempts failed.');
   }
@@ -132,7 +193,11 @@ class SSHService {
   Future<String> execute(String command) async {
     if (!isConnected) throw Exception("SSH not connected");
 
-    final session = await _client!.execute(command);
+    // Prepend Termux HOME and PATH to ensure reliability across SSH sessions
+    final fullCommand =
+        'export HOME=/data/data/com.termux/files/home; export PATH=/data/data/com.termux/files/home/flutter/bin:/data/data/com.termux/files/usr/bin:\$PATH; export TMPDIR=/data/data/com.termux/files/usr/tmp; $command';
+
+    final session = await _client!.execute(fullCommand);
 
     // Properly collect and decode both stdout and stderr
     final List<int> allBytes = [];
@@ -150,8 +215,11 @@ class SSHService {
   /// Execute a command and return output stream (stdout + stderr mixed)
   Stream<String> executeStream(String command) async* {
     if (!isConnected) throw Exception("SSH not connected");
+    // Prepend Termux HOME and PATH to ensure reliability across SSH sessions
+    final fullCommand =
+        'export HOME=/data/data/com.termux/files/home; export PATH=/data/data/com.termux/files/home/flutter/bin:/data/data/com.termux/files/usr/bin:\$PATH; export TMPDIR=/data/data/com.termux/files/usr/tmp; $command';
 
-    final session = await _client!.execute(command);
+    final session = await _client!.execute(fullCommand);
 
     final controller = StreamController<String>();
     int activeStreams = 2;
@@ -184,8 +252,11 @@ class SSHService {
   /// Execute command and return detailed result (exitCode, stdout, stderr)
   Future<SSHExecResult> executeWithDetails(String command) async {
     if (!isConnected) throw Exception("SSH not connected");
+    // Prepend Termux HOME and PATH to ensure reliability across SSH sessions
+    final fullCommand =
+        'export HOME=/data/data/com.termux/files/home; export PATH=/data/data/com.termux/files/home/flutter/bin:/data/data/com.termux/files/usr/bin:\$PATH; export TMPDIR=/data/data/com.termux/files/usr/tmp; $command';
 
-    final session = await _client!.execute(command);
+    final session = await _client!.execute(fullCommand);
 
     final stdoutBytes = <int>[];
     final stderrBytes = <int>[];

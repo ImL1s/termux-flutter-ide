@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart'; // For projectPathProvider
 import '../file_manager/file_operations.dart';
@@ -83,12 +83,15 @@ final launchConfigurationsProvider =
     // 1. Try to load from .termux-ide/launch.json
     // We set a short timeout so we don't block the UI for too long if SSH is slow
     final configPath = '$projectPath/.termux-ide/launch.json';
-    
+
     // We use a helper to wrap the async check with a timeout
-    final hasConfig = await ops.exists(configPath).timeout(const Duration(milliseconds: 500));
-    
+    final hasConfig =
+        await ops.exists(configPath).timeout(const Duration(milliseconds: 500));
+
     if (hasConfig) {
-      final content = await ops.readFile(configPath).timeout(const Duration(milliseconds: 500));
+      final content = await ops
+          .readFile(configPath)
+          .timeout(const Duration(milliseconds: 500));
       if (content != null) {
         final json = jsonDecode(content);
         if (json['configurations'] is List) {
@@ -100,9 +103,11 @@ final launchConfigurationsProvider =
     }
 
     // 2. Add Auto-Detected Configurations
-    
+
     // Check for FVM
-    if (await ops.exists('$projectPath/.fvm/flutter_sdk').timeout(const Duration(milliseconds: 200), onTimeout: () => false)) {
+    if (await ops
+        .exists('$projectPath/.fvm/flutter_sdk')
+        .timeout(const Duration(milliseconds: 2000), onTimeout: () => false)) {
       configs.add(const LaunchConfiguration(
         name: 'Flutter (FVM)',
         flutterPath: 'fvm flutter',
@@ -110,17 +115,28 @@ final launchConfigurationsProvider =
       ));
     }
 
-    // Check for Termux Flutter
-    const termuxFlutterPath =
-        '/data/data/com.termux/files/usr/opt/flutter/bin/flutter';
-    if (await ops.exists(termuxFlutterPath).timeout(const Duration(milliseconds: 200), onTimeout: () => false)) {
+    // Check for User Custom Flutter (Standard termux-flutter-wsl path)
+    const userFlutterPath =
+        '/data/data/com.termux/files/home/flutter/bin/flutter';
+    if (await ops
+        .exists(userFlutterPath)
+        .timeout(const Duration(milliseconds: 2000), onTimeout: () => false)) {
       configs.add(const LaunchConfiguration(
-        name: 'Flutter (Termux)',
-        flutterPath: termuxFlutterPath,
-        deviceId: 'linux', // Default to linux for termux
+        name: 'Flutter (User)',
+        flutterPath: userFlutterPath,
       ));
     }
 
+    // Check for System Flutter (Standard pkg install path)
+    const systemFlutterPath = '/data/data/com.termux/files/usr/bin/flutter';
+    if (await ops
+        .exists(systemFlutterPath)
+        .timeout(const Duration(milliseconds: 2000), onTimeout: () => false)) {
+      configs.add(const LaunchConfiguration(
+        name: 'Flutter (System)',
+        flutterPath: systemFlutterPath,
+      ));
+    }
   } catch (e) {
     print('Error loading specific launch configs: $e');
     // Fallthrough to add default config
@@ -178,15 +194,16 @@ const String defaultLaunchJsonTemplate = '''{
     ]
 }''';
 
-/// Helper to create default launch.json
-Future<void> createDefaultLaunchConfig(String projectPath) async {
-  final dir = Directory('$projectPath/.termux-ide');
-  if (!await dir.exists()) {
-    await dir.create(recursive: true);
+/// Helper to create default launch.json using specific FileOperations
+Future<void> createDefaultLaunchConfig(
+    String projectPath, FileOperations ops) async {
+  final configDir = '$projectPath/.termux-ide';
+  if (!await ops.exists(configDir)) {
+    await ops.createDirectory(configDir);
   }
 
-  final file = File('$projectPath/.termux-ide/launch.json');
-  if (!await file.exists()) {
-    await file.writeAsString(defaultLaunchJsonTemplate);
+  final configFile = '$configDir/launch.json';
+  if (!await ops.exists(configFile)) {
+    await ops.writeFile(configFile, defaultLaunchJsonTemplate);
   }
 }
