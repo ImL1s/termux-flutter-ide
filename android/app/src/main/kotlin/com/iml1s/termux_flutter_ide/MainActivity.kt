@@ -15,6 +15,10 @@ import java.util.UUID
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "termux_flutter_ide/termux"
+    private val NATIVE_TERMINAL_CHANNEL = "termux_flutter_ide/native_terminal"
+    
+    // Native terminal manager for true PTY sessions
+    private lateinit var terminalManager: TermuxTerminalManager
     
     companion object {
         const val TERMUX_PACKAGE = "com.termux"
@@ -148,6 +152,86 @@ class MainActivity : FlutterActivity() {
                     } else {
                         result.error("INVALID_ARGUMENT", "Permission name is required", null)
                     }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+        
+        // Initialize native terminal manager
+        terminalManager = TermuxTerminalManager(this)
+        
+        // Set up native terminal MethodChannel
+        val nativeTerminalChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NATIVE_TERMINAL_CHANNEL)
+        terminalManager.setOutputChannel(nativeTerminalChannel)
+        
+        nativeTerminalChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "createSession" -> {
+                    val cwd = call.argument<String>("cwd")
+                    val shellPath = call.argument<String>("shellPath")
+                    val sessionId = terminalManager.createSession(cwd, shellPath)
+                    result.success(sessionId)
+                }
+                "initializeSession" -> {
+                    val sessionId = call.argument<String>("sessionId")
+                    val columns = call.argument<Int>("columns") ?: 80
+                    val rows = call.argument<Int>("rows") ?: 24
+                    if (sessionId != null) {
+                        result.success(terminalManager.initializeSession(sessionId, columns, rows))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sessionId is required", null)
+                    }
+                }
+                "writeToSession" -> {
+                    val sessionId = call.argument<String>("sessionId")
+                    val data = call.argument<String>("data")
+                    if (sessionId != null && data != null) {
+                        result.success(terminalManager.writeToSession(sessionId, data))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sessionId and data are required", null)
+                    }
+                }
+                "resizeSession" -> {
+                    val sessionId = call.argument<String>("sessionId")
+                    val columns = call.argument<Int>("columns") ?: 80
+                    val rows = call.argument<Int>("rows") ?: 24
+                    if (sessionId != null) {
+                        result.success(terminalManager.resizeSession(sessionId, columns, rows))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sessionId is required", null)
+                    }
+                }
+                "getSessionCwd" -> {
+                    val sessionId = call.argument<String>("sessionId")
+                    if (sessionId != null) {
+                        result.success(terminalManager.getSessionCwd(sessionId))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sessionId is required", null)
+                    }
+                }
+                "isSessionRunning" -> {
+                    val sessionId = call.argument<String>("sessionId")
+                    if (sessionId != null) {
+                        result.success(terminalManager.isSessionRunning(sessionId))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sessionId is required", null)
+                    }
+                }
+                "closeSession" -> {
+                    val sessionId = call.argument<String>("sessionId")
+                    if (sessionId != null) {
+                        result.success(terminalManager.closeSession(sessionId))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sessionId is required", null)
+                    }
+                }
+                "getActiveSessions" -> {
+                    result.success(terminalManager.getActiveSessions())
+                }
+                "getSessionCount" -> {
+                    result.success(terminalManager.getSessionCount())
                 }
                 else -> {
                     result.notImplemented()

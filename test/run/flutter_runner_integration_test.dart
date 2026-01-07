@@ -59,6 +59,22 @@ class MockFileOperations extends SshFileOperations {
   Future<bool> exists(String path) async {
     return File(path).exists();
   }
+
+  @override
+  Future<bool> isReady() async => true;
+
+  @override
+  Future<bool> writeFile(String path, String content) async {
+    await File(path).parent.create(recursive: true);
+    await File(path).writeAsString(content);
+    return true;
+  }
+
+  @override
+  Future<bool> createDirectory(String path) async {
+    await Directory(path).create(recursive: true);
+    return true;
+  }
 }
 
 void main() {
@@ -172,6 +188,45 @@ void main() {
           return null;
         },
       );
+
+      // Mock flutter_secure_storage channel
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'read') {
+            return null; // Return null for unknown keys
+          }
+          if (methodCall.method == 'write') {
+            return null;
+          }
+          return null;
+        },
+      );
+
+      // Mock shared_preferences channel
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/shared_preferences'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'getAll') {
+            return <String, Object>{}; // Return empty map
+          }
+          return null;
+        },
+      );
+
+      // Mock termux channel
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('termux_flutter_ide/termux'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'getTermuxUid') {
+            return 1000;
+          }
+          return null;
+        },
+      );
     });
 
     tearDown(() async {
@@ -262,7 +317,7 @@ void main() {
       final error = container.read(runnerErrorProvider);
 
       expect(state, RunnerState.error);
-      expect(error, contains('pubspec.yaml'));
+      expect(error, contains('此目錄不是有效的 Flutter 專案'));
     });
 
     test('run() creates session and sets running state on valid project',
@@ -469,6 +524,42 @@ void main() {
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('launch_config_test');
+
+      // Mock flutter_secure_storage channel
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'read') {
+            return null;
+          }
+          return null;
+        },
+      );
+
+      // Mock shared_preferences channel
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/shared_preferences'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'getAll') {
+            return <String, Object>{};
+          }
+          return null;
+        },
+      );
+
+      // Mock termux channel
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('termux_flutter_ide/termux'),
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'getTermuxUid') {
+            return 1000;
+          }
+          return null;
+        },
+      );
     });
 
     tearDown(() async {

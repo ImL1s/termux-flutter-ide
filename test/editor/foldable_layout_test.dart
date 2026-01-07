@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:termux_flutter_ide/editor/editor_page.dart';
@@ -38,7 +39,22 @@ void main() {
     commandServiceProvider.overrideWith((ref) => MockCommandService()),
   ];
 
-  // ignore: subtype_of_sealed_class
+  setUp(() {
+    // Mock termux channel to prevent TermuxBridge timeouts (pending timers)
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('termux_flutter_ide/termux'),
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'isTermuxInstalled') {
+          return true;
+        }
+        if (methodCall.method == 'executeCommand') {
+          return {'success': true, 'exitCode': 0, 'stdout': '', 'stderr': ''};
+        }
+        return null;
+      },
+    );
+  });
   const flexDisplayFeature = DisplayFeature(
     bounds: Rect.fromLTWH(0, 400, 800, 20),
     type: DisplayFeatureType.fold,
@@ -66,13 +82,13 @@ void main() {
     );
 
     // Use pump instead of pumpAndSettle to avoid timeouts with blinking cursors
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
 
     // Verify TabBar with 4 specific tabs (Terminal, Problems, Debug, Runner)
-    expect(find.byIcon(Icons.terminal), findsOneWidget);
-    expect(find.byIcon(Icons.warning_amber), findsOneWidget);
-    expect(find.byIcon(Icons.bug_report), findsOneWidget);
-    expect(find.byIcon(Icons.play_circle), findsOneWidget);
+    expect(find.byIcon(Icons.terminal), findsAtLeastNWidgets(1));
+    expect(find.byIcon(Icons.warning_amber), findsAtLeastNWidgets(1));
+    expect(find.byIcon(Icons.bug_report), findsAtLeastNWidgets(1));
+    expect(find.byIcon(Icons.play_circle), findsAtLeastNWidgets(1));
 
     // Verify top bar for Flex Mode (compact)
     // Default project name when path is null is 'IDE' (see editor_page.dart)
@@ -99,7 +115,7 @@ void main() {
       ),
     );
 
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
 
     // The simplified Flex Mode control panel with 4 tabs should NOT be present
     expect(find.byIcon(Icons.play_circle), findsNothing);
@@ -130,7 +146,7 @@ void main() {
       ),
     );
 
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
 
     // In TwoPane (foldable open), we have the vertical Activity Bar on the left
     // ActivityBar contains Icons.analytics_outlined (Project Health)

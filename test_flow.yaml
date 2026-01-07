@@ -1,0 +1,33 @@
+appId: com.iml1s.termux_flutter_ide
+---
+- launchApp:
+    clearState: true
+    permissions: 
+      all: allow
+- takeScreenshot: setup_01_welcome
+- tapOn: "開始設定"
+- takeScreenshot: setup_02_env_check
+# Wait for checks to complete
+- extendedWaitUntil:
+    visible: "繼續設定"
+    timeout: 30000
+- takeScreenshot: setup_03_env_passed
+- tapOn: "繼續設定"
+- takeScreenshot: setup_04_workdir
+- tapOn: "下一步"
+- takeScreenshot: setup_05_ssh
+- tapOn: "下一步"
+- takeScreenshot: setup_06_complete
+- tapOn: "開始使用"
+- takeScreenshot: home_screen
+# Open project (might be tricky with system picker, let's see)
+# If we are at home screen, we might see "開啟專案"
+- tapOn: "開啟專案"
+# Depending on the file picker implementation, this might vary.
+# If it's a custom file picker within the app (which I think it is based on code I saw earlier),
+# we can navigate.
+# Let's assume we can select a folder.
+# If the app uses system pickle, Maestro handles it poorly.
+# BUT, looking at `file_tree_view.dart`, it seems to be using `file_selector` or similar?
+# Let's try to just select the default directory if possible or navigate.
+# For now, let's see if we can just "Run" if verify that we are in editor.

@@ -771,4 +771,14 @@ class MockTermuxBridge extends _i1.Mock implements _i9.TermuxBridge {
         ),
         returnValue: _i8.Stream<String>.empty(),
       ) as _i8.Stream<String>);
+
+  @override
+  _i8.Future<void> fixTermuxEnvironment() => (super.noSuchMethod(
+        Invocation.method(
+          #fixTermuxEnvironment,
+          [],
+        ),
+        returnValue: _i8.Future<void>.value(),
+        returnValueForMissingStub: _i8.Future<void>.value(),
+      ) as _i8.Future<void>);
 }

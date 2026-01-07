@@ -9,6 +9,7 @@ import '../terminal/terminal_session.dart';
 import '../termux/termux_bridge.dart';
 import 'vm_service_manager.dart';
 import '../core/providers.dart';
+import '../file_manager/file_operations.dart';
 
 /// Runner State Enum
 enum RunnerState {
@@ -80,16 +81,15 @@ class FlutterRunnerService {
     final projectPath = _ref.read(projectPathProvider);
     if (projectPath == null) return false;
 
-    // Use TermuxBridge to check file existence
-    final bridge = TermuxBridge();
+    // Use FileOperations to check file existence (abstracted for SSH/Bridge/Test)
+    final fileOps = _ref.read(fileOperationsProvider);
     try {
-      final result = await bridge
-          .executeCommand('[ -f "$projectPath/pubspec.yaml" ] && echo "OK"');
-      print(
-          'isValidFlutterProject: check result for $projectPath/pubspec.yaml: "${result.stdout}"');
-      return result.stdout.trim() == 'OK';
+      final pubspecPath = '$projectPath/pubspec.yaml';
+      final exists = await fileOps.exists(pubspecPath);
+      print('isValidFlutterProject: check result for $pubspecPath: "$exists"');
+      return exists;
     } catch (e) {
-      print('isValidFlutterProject: Bridge execute failed: $e');
+      print('isValidFlutterProject: File check failed: $e');
       return false;
     }
   }

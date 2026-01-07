@@ -1,0 +1,77 @@
+appId: com.iml1s.termux_flutter_ide
+# E2E: Setup Wizard Flow
+# 此測試驗證 Setup Wizard 的完整流程
+# 從 Welcome → Environment Check → SSH → External Apps → Flutter → Complete
+---
+
+# Welcome Screen
+- extendedWaitUntil:
+    visible: "開始設置"
+    timeout: 10000
+- assertVisible: "開始設置"
+- tapOn:
+    text: "開始設置"
+
+# Environment Check Step
+- extendedWaitUntil:
+    visible: "環境檢測"
+    timeout: 10000
+    optional: true
+- tapOn:
+    text: "下一步"
+    optional: true
+- tapOn:
+    text: "繼續設定"
+    optional: true
+
+# SSH Step
+- extendedWaitUntil:
+    visible: "SSH"
+    timeout: 10000
+    optional: true
+- tapOn:
+    text: "跳過"
+    optional: true
+- tapOn:
+    text: "下一步"
+    optional: true
+
+# External Apps Permission
+- extendedWaitUntil:
+    visible: "外部"
+    timeout: 10000
+    optional: true
+- tapOn:
+    text: "我已啟用"
+    optional: true
+
+# X11 Detection (if shown)
+- extendedWaitUntil:
+    visible: "Termux:X11"
+    timeout: 5000
+    optional: true
+- tapOn:
+    text: "我已安裝 (重試)"
+    optional: true
+
+# Flutter Step
+- extendedWaitUntil:
+    visible: "Flutter"
+    timeout: 10000
+    optional: true
+- tapOn:
+    text: "跳過"
+    optional: true
+
+# Complete Screen
+- extendedWaitUntil:
+    visible: "開始 Coding"
+    timeout: 10000
+- tapOn:
+    text: "開始 Coding"
+
+# Verify Editor Loaded
+- extendedWaitUntil:
+    visible: "EXPLORER"
+    timeout: 15000
+- assertVisible: "EXPLORER"

@@ -42,3 +42,11 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Termux terminal-view library for native PTY support
+    implementation("com.termux.termux-app:terminal-view:0.118.0")
+    implementation("com.termux.termux-app:termux-shared:0.118.0")
+    // Required to avoid Guava ListenableFuture conflict
+    implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
+}

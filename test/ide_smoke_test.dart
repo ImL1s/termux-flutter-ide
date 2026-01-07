@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:termux_flutter_ide/editor/editor_page.dart';
@@ -11,6 +12,21 @@ void main() {
     // Set screen size to known Mobile Portrait
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;
+
+    // Mock termux channel to prevent TermuxBridge timeouts (pending timers)
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('termux_flutter_ide/termux'),
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'isTermuxInstalled') {
+          return true;
+        }
+        if (methodCall.method == 'executeCommand') {
+          return {'success': true, 'exitCode': 0, 'stdout': '', 'stderr': ''};
+        }
+        return null; // Return null for others
+      },
+    );
 
     // Pump EditorPage directly
     // Mock Setup Wizard checks with Providers

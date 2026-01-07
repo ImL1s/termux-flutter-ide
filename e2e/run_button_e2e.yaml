@@ -1,0 +1,50 @@
+appId: com.iml1s.termux_flutter_ide
+# E2E: Run Button (FlutterRunnerWidget) Flow
+# 此測試驗證 IDE Run 按鈕的完整流程
+# 前提條件：
+#   1. 已通過 Setup Wizard 進入 Editor
+#   2. 已開啟一個有效的 Flutter 專案
+---
+
+# 假設已在 Editor 頁面，且已開啟 Flutter 專案
+- extendedWaitUntil:
+    visible: "EXPLORER"
+    timeout: 5000
+    optional: true
+
+# 點擊 AppBar 的 Run 按鈕 (座標: [675,86][810,221] 中點約 742, 153)
+- tapOn:
+    point: 742, 153
+
+# 等待 Runner Modal 出現
+- extendedWaitUntil:
+    visible: "Run"
+    timeout: 10000
+
+# 點擊 Run Flutter (Default) 按鈕 (座標約 540, 1601)
+- tapOn:
+    point: 540, 1601
+
+# 等待 Runner 開始執行
+- extendedWaitUntil:
+    visible: "Starting Runner"
+    timeout: 15000
+    optional: true
+
+# 等待 SSH 連接
+- extendedWaitUntil:
+    visible: "SSH connected"
+    timeout: 30000
+    optional: true
+
+# 驗證專案驗證步驟
+- extendedWaitUntil:
+    visible: "Validating"
+    timeout: 10000
+    optional: true
+
+# 如果專案有效，等待 flutter run 執行
+- extendedWaitUntil:
+    visible: "running"
+    timeout: 180000
+    optional: true

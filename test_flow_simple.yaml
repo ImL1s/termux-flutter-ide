@@ -1,0 +1,115 @@
+appId: com.iml1s.termux_flutter_ide
+name: Simplified IDE Workflow Test
+---
+# Launch app
+- launchApp:
+    clearState: false
+    permissions:
+      all: allow
+
+- takeScreenshot: 01_launched
+
+# Wait for app to load
+- extendedWaitUntil:
+    visible:
+      regex: ".*"
+    timeout: 5000
+
+# If on setup wizard, skip through it quickly
+- runFlow:
+    when:
+      visible: "歡迎"
+    commands:
+      - tapOn:
+          text: "開始.*"
+          regex: true
+      - takeScreenshot: 02_setup
+      - extendedWaitUntil:
+          visible: "繼續"
+          timeout: 30000
+      - tapOn: "繼續"
+      - tapOn: "下一步"
+      - tapOn: "下一步"
+      - runFlow:
+          when:
+            visible: "開始使用"
+          commands:
+            - tapOn: "開始使用"
+
+- takeScreenshot: 10_main_screen
+
+# Wait for editor to be ready
+- extendedWaitUntil:
+    visible:
+      regex: ".*"
+    timeout: 3000
+
+# Try to open terminal for flutter create
+- runFlow:
+    when:
+      visible:
+        id: "bottom_terminal"
+    commands:
+      - tapOn:
+          id: "bottom_terminal"
+      - takeScreenshot: 20_terminal_opened
+
+# Alternative: Tap on terminal icon/text
+- runFlow:
+    when:
+      visible: "Terminal"
+    commands:
+      - tapOn: "Terminal"
+      - takeScreenshot: 21_terminal_by_text
+
+# Type command to create and run project
+# (This assumes terminal is active and ready)
+- inputText: "cd ~ && mkdir -p test_e2e && cd test_e2e"
+- pressKey: Enter
+- takeScreenshot: 22_cd_done
+
+- extendedWaitUntil:
+    visible:
+      regex: ".*"
+    timeout: 2000
+
+- inputText: "flutter create my_test_app"
+- pressKey: Enter
+- takeScreenshot: 23_creating_project
+
+# Wait for flutter create to finish (can take 30-60s)
+- extendedWaitUntil:
+    visible:
+      regex: ".*created.*|.*Created.*"
+    timeout: 120000
+
+- takeScreenshot: 24_project_created
+
+# CD into project
+- inputText: "cd my_test_app"
+- pressKey: Enter
+- takeScreenshot: 25_in_project_dir
+
+# Run flutter run
+- inputText: "flutter run"
+- pressKey: Enter
+- takeScreenshot: 26_flutter_run_started
+
+# Wait for app to start running
+- extendedWaitUntil:
+    visible:
+      regex: ".*utter run.*|.*Launching.*|.*Running.*"
+    timeout: 60000
+
+- takeScreenshot: 27_app_launching
+
+# Wait a bit more for app to fully start
+- extendedWaitUntil:
+    visible:
+      regex: ".*"
+    timeout: 30000
+
+- takeScreenshot: 28_app_running
+
+# Final screenshot
+- takeScreenshot: 99_complete

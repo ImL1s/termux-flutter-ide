@@ -1,0 +1,133 @@
+appId: com.iml1s.termux_flutter_ide
+# E2E: Complete Flutter Run Flow
+# 此測試驗證從 Setup Wizard 到成功執行 flutter run 的完整流程
+# 前提條件：
+#   1. 設備已安裝 Termux 和 Termux:X11
+#   2. Termux 已配置好 allow-external-apps
+#   3. Flutter SDK 已安裝在 Termux 中
+---
+
+# ==================== Step 1: Setup Wizard ====================
+
+# Welcome Screen - 開始設置
+- extendedWaitUntil:
+    visible: "開始設置"
+    timeout: 10000
+    optional: true
+
+- tapOn:
+    text: "開始設置"
+    optional: true
+
+# Environment Check - 繼續
+- extendedWaitUntil:
+    visible: "下一步"
+    timeout: 10000
+    optional: true
+
+- tapOn:
+    text: "下一步"
+    optional: true
+
+# SSH Step - 跳過 (如果顯示)
+- extendedWaitUntil:
+    visible: "跳過"
+    timeout: 10000
+    optional: true
+
+- tapOn:
+    text: "跳過"
+    optional: true
+
+# X11 Detection - 我已安裝 (如果顯示)
+- extendedWaitUntil:
+    visible: "我已安裝"
+    timeout: 10000
+    optional: true
+
+- tapOn:
+    text: "我已安裝 (重試)"
+    optional: true
+
+# External Apps - 我已啟用
+- extendedWaitUntil:
+    visible: "我已啟用"
+    timeout: 10000
+    optional: true
+
+- tapOn:
+    text: "我已啟用"
+    optional: true
+
+# Flutter Step - 跳過
+- extendedWaitUntil:
+    visible: "跳過"
+    timeout: 10000
+    optional: true
+
+- tapOn:
+    text: "跳過"
+    optional: true
+
+# Complete - 開始 Coding
+- extendedWaitUntil:
+    visible: "開始 Coding"
+    timeout: 10000
+    optional: true
+
+- tapOn:
+    text: "開始 Coding"
+    optional: true
+
+# ==================== Step 2: Switch to Terminal ====================
+
+# 等待 Editor 載入
+- extendedWaitUntil:
+    visible: "EXPLORER"
+    timeout: 15000
+    optional: true
+
+# 點擊底部 Terminal Tab (座標: 中間 tab)
+- tapOn:
+    point: 540, 2270
+
+# 等待 Terminal 連接
+- extendedWaitUntil:
+    visible: "$"
+    timeout: 20000
+    optional: true
+
+# ==================== Step 3: Create Flutter Project ====================
+
+# 點擊終端機獲取焦點
+- tapOn:
+    point: 540, 1200
+
+# 輸入創建專案命令
+- inputText: "rm -rf ~/e2e_test_app && flutter create ~/e2e_test_app"
+
+# 按 Enter 執行
+- pressKey: Enter
+
+# 等待專案創建完成
+- extendedWaitUntil:
+    visible: "All done"
+    timeout: 180000
+
+# ==================== Step 4: Run Flutter App ====================
+
+# 點擊終端機
+- tapOn:
+    point: 540, 1200
+
+# 輸入 flutter run 命令
+- inputText: "cd ~/e2e_test_app && flutter run -d linux"
+
+# 按 Enter 執行
+- pressKey: Enter
+
+# 等待 flutter run 開始執行
+- extendedWaitUntil:
+    visible: "Syncing"
+    timeout: 180000
+    optional: true

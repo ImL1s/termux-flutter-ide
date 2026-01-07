@@ -1,0 +1,268 @@
+appId: com.iml1s.termux_flutter_ide
+name: Complete IDE Workflow - Setup to Run
+---
+# ============================================================
+# PHASE 1: Launch and Setup
+# ============================================================
+- launchApp:
+    clearState: false  # Preserve state if already set up
+    permissions:
+      all: allow
+
+- takeScreenshot: 01_app_launch
+
+# Check if we're on setup or editor page
+- runFlow:
+    when:
+      visible: "歡迎使用"
+    commands:
+      # We're on setup wizard
+      - takeScreenshot: 02_setup_welcome
+      - tapOn: "開始設"  # Partial match for "開始設置" or "開始設定"
+      - takeScreenshot: 03_setup_env_check
+
+      # Wait for environment checks to complete
+      - extendedWaitUntil:
+          visible:
+            anyOf:
+              - "繼續"
+              - "下一步"
+              - "失敗"
+          timeout: 45000
+
+      - takeScreenshot: 04_env_check_done
+
+      # Continue through setup
+      - tapOn:
+          text: "繼續.*"
+          regex: true
+      - takeScreenshot: 05_after_continue
+
+      # Handle Termux permission step if present
+      - runFlow:
+          when:
+            visible: "外部應用"
+          commands:
+            - takeScreenshot: 06_termux_permission
+            - tapOn:
+                text: "下一步"
+            - takeScreenshot: 07_after_permission
+
+      # Handle SSH setup step
+      - runFlow:
+          when:
+            visible:
+              anyOf:
+                - "SSH"
+                - "尚未連線"
+          commands:
+            - takeScreenshot: 08_ssh_step
+
+            # Try auto-configure if available
+            - runFlow:
+                when:
+                  visible: "自動配置"
+                commands:
+                  - tapOn: "自動配置"
+                  - takeScreenshot: 09_auto_config_clicked
+
+                  # Confirm dialog if present
+                  - runFlow:
+                      when:
+                        visible: "開始"
+                      commands:
+                        - tapOn: "開始"
+                        - takeScreenshot: 10_config_started
+
+                        # Wait for setup to complete (may take a while)
+                        - extendedWaitUntil:
+                            visible:
+                              anyOf:
+                                - "成功"
+                                - "已連線"
+                                - "下一步"
+                                - "失敗"
+                            timeout: 90000
+
+                        - takeScreenshot: 11_ssh_setup_done
+
+            - tapOn: "下一步"
+            - takeScreenshot: 12_after_ssh
+
+      # Handle Flutter installation if needed
+      - runFlow:
+          when:
+            visible:
+              anyOf:
+                - "Flutter.*安裝"
+                - "安裝 Flutter"
+          commands:
+            - takeScreenshot: 13_flutter_install
+
+            # If Flutter not installed, this could take VERY long
+            # For testing, we assume it's installed or skip
+            - tapOn: "下一步"
+            - takeScreenshot: 14_after_flutter
+
+      # Complete setup
+      - runFlow:
+          when:
+            visible:
+              anyOf:
+                - "完成"
+                - "開始使用"
+          commands:
+            - takeScreenshot: 15_setup_complete
+            - tapOn:
+                text: "開始使用|完成"
+                regex: true
+            - takeScreenshot: 16_entering_editor
+
+# ============================================================
+# PHASE 2: We should now be on Editor Page
+# ============================================================
+- takeScreenshot: 20_editor_main
+
+# Wait a moment for editor to fully load
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# ============================================================
+# PHASE 3: Open/Create Flutter Project
+# ============================================================
+
+# Look for file tree or project area
+- runFlow:
+    when:
+      visible:
+        anyOf:
+          - "開啟專案"
+          - "Open Project"
+    commands:
+      # No project loaded, need to open one
+      - takeScreenshot: 21_no_project
+      - tapOn: "開啟專案"
+      - takeScreenshot: 22_opening_project
+
+      # This will open file picker
+      # Maestro can't fully control system file picker
+      # But we can try to tap on common locations
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 23_file_picker
+
+# Alternative: Use terminal to create a project
+- runFlow:
+    when:
+      visible:
+        anyOf:
+          - id: "terminal_tab"
+          - text: "Terminal"
+          - text: "終端"
+    commands:
+      - takeScreenshot: 24_found_terminal
+      - tapOn:
+          text: "Terminal|終端"
+          regex: true
+      - takeScreenshot: 25_terminal_opened
+
+      # Type command to create project
+      # Note: Maestro inputText works with focused text fields
+      - inputText: "cd ~ && mkdir -p test_projects && cd test_projects && flutter create e2e_test_app && cd e2e_test_app"
+      - pressKey: Enter
+      - takeScreenshot: 26_creating_project
+
+      # Wait for project creation (flutter create takes ~30-60s)
+      - waitForAnimationToEnd:
+          timeout: 90000
+      - takeScreenshot: 27_project_created
+
+# ============================================================
+# PHASE 4: Open the project in editor
+# ============================================================
+
+# Try to open main.dart from file tree
+- runFlow:
+    when:
+      visible: "main.dart"
+    commands:
+      - takeScreenshot: 30_found_main_dart
+      - tapOn: "main.dart"
+      - takeScreenshot: 31_main_dart_opened
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+# ============================================================
+# PHASE 5: Run the Flutter project
+# ============================================================
+
+# Look for Run/Play button
+- runFlow:
+    when:
+      visible:
+        anyOf:
+          - id: "run_button"
+          - id: "play_button"
+    commands:
+      - takeScreenshot: 40_found_run_button
+      - tapOn:
+          id: "run_button"
+      - takeScreenshot: 41_clicked_run
+
+# Alternative: Try to find play icon
+- runFlow:
+    when:
+      not:
+        visible: "FLUTTER RUNNER|Running"
+    commands:
+      # Try tapping in the app bar area where run button usually is
+      - takeScreenshot: 42_looking_for_run
+      - tapOn:
+          point: "90%,10%"  # Top right corner where run button typically is
+      - takeScreenshot: 43_tapped_top_right
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+# Wait for Flutter runner to appear
+- extendedWaitUntil:
+    visible:
+      anyOf:
+        - "FLUTTER RUNNER"
+        - "Running"
+        - "flutter run"
+    timeout: 15000
+
+- takeScreenshot: 50_runner_started
+
+# Wait for the app to actually launch
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- takeScreenshot: 51_app_running
+
+# ============================================================
+# PHASE 6: Verify Running State
+# ============================================================
+
+# Check for console output
+- runFlow:
+    when:
+      visible:
+        anyOf:
+          - "Running"
+          - "Launching"
+          - "Hot reload"
+    commands:
+      - takeScreenshot: 60_verified_running
+      - scrollUntilVisible:
+          element:
+            text: ".*debug.*"
+            regex: true
+          direction: DOWN
+          timeout: 5000
+      - takeScreenshot: 61_console_output
+
+# ============================================================
+# Test Complete
+# ============================================================
+- takeScreenshot: 99_test_complete

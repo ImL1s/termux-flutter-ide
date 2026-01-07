@@ -1,0 +1,45 @@
+appId: com.iml1s.termux_flutter_ide
+# E2E: Terminal Command Execution
+# 此測試驗證在 Terminal 中執行命令的能力
+# 前提條件：已通過 Setup Wizard 進入 Editor
+---
+
+# 假設已在 Editor 頁面
+- extendedWaitUntil:
+    visible: "EXPLORER"
+    timeout: 5000
+    optional: true
+
+# 點擊 Terminal Tab (底部導航 Tab 2)
+- tapOn:
+    point: 540, 2270
+
+# 等待 Terminal 載入並連接 SSH
+- extendedWaitUntil:
+    visible: "$"
+    timeout: 20000
+    optional: true
+
+# 點擊終端機區域獲取輸入焦點
+- tapOn:
+    point: 540, 1200
+
+# 執行簡單命令測試
+- inputText: "echo 'Hello from Termux IDE E2E Test'"
+- pressKey: Enter
+
+# 驗證輸出
+- extendedWaitUntil:
+    visible: "Hello from Termux IDE E2E Test"
+    timeout: 10000
+
+# 測試 Flutter 版本
+- tapOn:
+    point: 540, 1200
+- inputText: "flutter --version"
+- pressKey: Enter
+
+# 驗證 Flutter 輸出
+- extendedWaitUntil:
+    visible: "Flutter"
+    timeout: 30000
