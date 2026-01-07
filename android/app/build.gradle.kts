@@ -43,10 +43,16 @@ flutter {
     source = "../.."
 }
 
+repositories {
+    maven { url = uri("https://jitpack.io") }
+}
+
 dependencies {
-    // Termux terminal-view library for native PTY support
-    implementation("com.termux.termux-app:terminal-view:0.118.0")
-    implementation("com.termux.termux-app:termux-shared:0.118.0")
+    // Termux terminal-view library for native PTY support (via JitPack)
+    // Verified working with v0.118.0 tag
+    implementation("com.github.termux.termux-app:terminal-view:v0.118.0")
+    implementation("com.github.termux.termux-app:termux-shared:v0.118.0")
+    
     // Required to avoid Guava ListenableFuture conflict
     implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
 }
