@@ -9,6 +9,7 @@ enum SetupStep {
   environmentCheck, // New: check all prerequisites before starting
   termux, // Check if Termux app is installed
   termuxPermission, // Enable allow-external-apps in Termux (Prerequisite for Bridge)
+  dependencies, // New: Fix environment (pkg upgrade) and install Git
   ssh,
   flutter,
   x11, // Optional, can be done later, but good to check
@@ -20,6 +21,7 @@ class SetupState {
   final SetupStep currentStep;
   final bool isTermuxInstalled;
   final bool isSSHConnected;
+  final bool isGitInstalled;
   final bool isFlutterInstalled;
   final bool isX11Installed;
   final bool isInstalling;
@@ -29,6 +31,7 @@ class SetupState {
     this.currentStep = SetupStep.welcome,
     this.isTermuxInstalled = false,
     this.isSSHConnected = false,
+    this.isGitInstalled = false,
     this.isFlutterInstalled = false,
     this.isX11Installed = false,
     this.isInstalling = false,
@@ -39,6 +42,7 @@ class SetupState {
     SetupStep? currentStep,
     bool? isTermuxInstalled,
     bool? isSSHConnected,
+    bool? isGitInstalled,
     bool? isFlutterInstalled,
     bool? isX11Installed,
     bool? isInstalling,
@@ -48,6 +52,7 @@ class SetupState {
       currentStep: currentStep ?? this.currentStep,
       isTermuxInstalled: isTermuxInstalled ?? this.isTermuxInstalled,
       isSSHConnected: isSSHConnected ?? this.isSSHConnected,
+      isGitInstalled: isGitInstalled ?? this.isGitInstalled,
       isFlutterInstalled: isFlutterInstalled ?? this.isFlutterInstalled,
       isX11Installed: isX11Installed ?? this.isX11Installed,
       isInstalling: isInstalling ?? this.isInstalling,
@@ -88,11 +93,16 @@ class SetupService extends Notifier<SetupState> {
     final isConnected = sshService.isConnected;
 
     bool isFlutter = false;
+    bool isGit = false;
     bool isX11 = false;
 
     if (isConnected) {
       try {
         // 1. Verify functionality
+        final gitResult =
+            await sshService.executeWithDetails('git --version');
+        isGit = gitResult.exitCode == 0;
+
         final result =
             await sshService.executeWithDetails('flutter --version 2>&1');
         print(
@@ -112,15 +122,17 @@ class SetupService extends Notifier<SetupState> {
     } else {
       // If SSH not connected, try checking via bridge (Intent)
       print('TERMUX_IDE_SETUP: SSH not connected. Checking via bridge...');
+      // Limited check via bridge if SSH down
       isFlutter = await termuxBridge.isFlutterInstalled();
     }
 
     print(
-        'TERMUX_IDE_SETUP: Final Check -> isFlutter: $isFlutter, isTermux: $isTermux, isSSH: $isConnected');
+        'TERMUX_IDE_SETUP: Final Check -> isFlutter: $isFlutter, isGit: $isGit, isTermux: $isTermux, isSSH: $isConnected');
 
     state = state.copyWith(
       isTermuxInstalled: isTermux,
       isSSHConnected: isConnected,
+      isGitInstalled: isGit,
       isFlutterInstalled: isFlutter,
       isX11Installed: isX11,
       // If we found flutter, we are definitely not "installing" anymore
@@ -144,13 +156,16 @@ class SetupService extends Notifier<SetupState> {
         state = state.copyWith(currentStep: SetupStep.environmentCheck);
         break;
       case SetupStep.environmentCheck:
-        // Move to SSH step as it's the next configuration step
-        state = state.copyWith(currentStep: SetupStep.ssh);
+        // Go to permissions step first to ensure external apps are allowed
+        state = state.copyWith(currentStep: SetupStep.termuxPermission);
         break;
       case SetupStep.termux:
         state = state.copyWith(currentStep: SetupStep.ssh);
         break;
       case SetupStep.termuxPermission:
+        state = state.copyWith(currentStep: SetupStep.dependencies);
+        break;
+      case SetupStep.dependencies:
         state = state.copyWith(currentStep: SetupStep.ssh);
         break;
       case SetupStep.ssh:
@@ -350,6 +365,147 @@ class SetupService extends Notifier<SetupState> {
       isInstalling: installing,
       installLog: log ?? state.installLog,
     );
+  }
+
+
+  /// Install Dependencies (Git, pkg upgrade)
+  Future<void> installDependencies() async {
+    final sshService = ref.read(sshServiceProvider);
+
+    // Ensure SSH is connected
+    if (!sshService.isConnected) {
+      state = state.copyWith(
+          isInstalling: true, installLog: '正在建立 SSH 連線...\n');
+      try {
+        await sshService.connect();
+      } catch (e) {
+        state = state.copyWith(
+            installLog: '${state.installLog}SSH 連線失敗: $e\n請先檢查連線設定。\n');
+        return;
+      }
+    }
+
+    state = state.copyWith(
+        isInstalling: true,
+        installLog: '正在更新系統套件並安裝 Git...\n這可能需要幾分鐘，請勿關閉。\n\n');
+
+    try {
+      // Use 'yes n' to answer 'No' to all interactive prompts during upgrade
+      // This is crucial for automation
+      const cmd =
+          'yes n | pkg upgrade -y && pkg install git -y && echo "DEPENDENCIES_INSTALLED"';
+
+      state = state.copyWith(
+          installLog:
+              '${state.installLog}正在執行: pkg upgrade -y && pkg install git\n(自動拒絕設定檔覆蓋以保持預設)\n\n');
+
+      final result = await sshService.executeWithDetails(cmd);
+
+      if (result.exitCode == 0) {
+        state = state.copyWith(
+          isInstalling: false,
+          installLog: '${state.installLog}安裝成功！\nGit 已就緒。\n系統已更新。\n',
+          isGitInstalled: true,
+        );
+        // Refresh environment logic
+        await checkEnvironment();
+      } else {
+        state = state.copyWith(
+          isInstalling: false,
+          installLog:
+              '${state.installLog}安裝失敗 (Code ${result.exitCode}):\n${result.stderr}\n${result.stdout}\n',
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isInstalling: false,
+        installLog: '${state.installLog}發生錯誤: $e\n',
+      );
+    }
+  }
+
+  /// Automate Termux permission setup (allow-external-apps)
+  Future<void> setupTermuxPermissions() async {
+    final sshService = ref.read(sshServiceProvider);
+
+    state = state.copyWith(
+        isInstalling: true, installLog: '正在設定 Termux 權限...\n請勿關閉應用程式。\n\n');
+
+    try {
+      // 1. Check/Install SSH connection first
+      if (!sshService.isConnected) {
+        state = state.copyWith(
+            installLog: '${state.installLog}正在嘗試建立連線...\n');
+        try {
+          await sshService.connect();
+        } catch (e) {
+          // If SSH fails, we can't automate this via SSH.
+           state = state.copyWith(
+            isInstalling: false,
+            installLog: '${state.installLog}SSH 連線失敗，無法自動設定。\n請手動執行指令。\n',
+          );
+          return;
+        }
+      }
+
+      state = state.copyWith(
+            installLog: '${state.installLog}SSH 連線成功，寫入設定檔...\n');
+
+      // 2. Execute command
+      // mkdir -p ~/.termux
+      // echo "allow-external-apps=true" > ~/.termux/termux.properties
+      // termux-reload-settings
+      const cmd = 'mkdir -p ~/.termux && echo "allow-external-apps=true" > ~/.termux/termux.properties && termux-reload-settings';
+      
+      final result = await sshService.executeWithDetails(cmd);
+
+      if (result.exitCode == 0) {
+         state = state.copyWith(
+          isInstalling: false,
+          installLog: '${state.installLog}設定成功！\nallow-external-apps 已啟用。\n設定已重載。\n',
+        );
+      } else {
+        state = state.copyWith(
+          isInstalling: false,
+          installLog:
+              '${state.installLog}設定失敗 (Code ${result.exitCode}):\n${result.stderr}\n${result.stdout}\n',
+        );
+      }
+
+    } catch (e) {
+      state = state.copyWith(
+        isInstalling: false,
+        installLog: '${state.installLog}發生錯誤: $e\n',
+      );
+    }
+  }
+
+  /// Verify Termux connection by running a simple command
+  Future<void> verifyTermuxConnection() async {
+    state = state.copyWith(isInstalling: true, installLog: '正在驗證 Termux 連線權限...\n');
+    
+    try {
+      final result = await ref.read(termuxBridgeProvider).executeCommand('echo "connection_ok"');
+      
+      if (result.exitCode == 0 && result.stdout.contains('connection_ok')) {
+        state = state.copyWith(
+          isInstalling: false,
+          installLog: '${state.installLog}✅ 連線驗證成功！\n權限設定正確。\n',
+        );
+        // Refresh environment logic as well
+        await checkEnvironment();
+      } else {
+        state = state.copyWith(
+          isInstalling: false,
+          installLog: '${state.installLog}❌ 驗證失敗。\n請確保您已手動執行指令並授權。\n',
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isInstalling: false,
+        installLog: '${state.installLog}❌ 發生錯誤 (可能是權限被拒)：\n請確認 Android 設定中已授權 App「跑指令」的權限。\n',
+      );
+    }
   }
 }
 

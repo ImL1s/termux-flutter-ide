@@ -483,6 +483,8 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
         return _buildSSHStep(state);
       case SetupStep.termuxPermission:
         return _buildTermuxPermissionStep();
+      case SetupStep.dependencies:
+        return _buildDependenciesStep(state);
       case SetupStep.flutter:
         return _buildFlutterStep(state);
       case SetupStep.x11:
@@ -493,8 +495,32 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
   }
 
   Widget _buildTermuxPermissionStep() {
-    const command =
-        'echo "allow-external-apps=true" >> ~/.termux/termux.properties && termux-reload-settings';
+    return Consumer(
+      builder: (context, ref, child) {
+        final state = ref.watch(setupServiceProvider);
+        
+        if (state.isInstalling && state.currentStep == SetupStep.termuxPermission) {
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFF89B4FA)),
+              const SizedBox(height: 24),
+              const Text(
+                '正在設定權限...',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFCDD6F4),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildLogWindow(state.installLog ?? ''),
+            ],
+          );
+        }
+
+        const command =
+            'echo "allow-external-apps = true" >> ~/.termux/termux.properties && termux-reload-settings';
 
     return SingleChildScrollView(
       child: Column(
@@ -536,9 +562,9 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
                 _buildCodeBlock(command),
                 const SizedBox(height: 16),
                 const Text(
-                  '💡 提示：執行後需重啟 Termux 或執行 termux-reload-settings',
+                  '💡 提示：此權限只能手動設定，無法自動完成。\n設定後請繼續下一步。',
                   style: TextStyle(
-                    color: Color(0xFF6C7086),
+                    color: Color(0xFFF9E2AF),
                     fontSize: 11,
                     fontStyle: FontStyle.italic,
                   ),
@@ -547,6 +573,21 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
             ),
           ),
           const SizedBox(height: 32),
+          // Test Connection Button
+          ElevatedButton.icon(
+            onPressed: () => ref.read(setupServiceProvider.notifier).verifyTermuxConnection(),
+            icon: const Icon(Icons.wifi_tethering),
+            label: const Text('測試連線 (設定完成後點擊)'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF9E2AF),
+              foregroundColor: const Color(0xFF1E1E2E),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: () {
               Clipboard.setData(const ClipboardData(text: command));
@@ -574,6 +615,135 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
             style:
                 TextButton.styleFrom(foregroundColor: const Color(0xFFBAC2DE)),
           ),
+        ],
+      ),
+    );
+      },
+    );
+  }
+
+
+  Widget _buildLogWindow(String log) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF11111B),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF313244)),
+      ),
+      height: 120,
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 500),
+      child: SingleChildScrollView(
+        reverse: true,
+        child: Text(
+          log,
+          style: const TextStyle(
+              fontFamily: 'JetBrains Mono',
+              fontSize: 11,
+              color: Color(0xFFA6ADC8)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDependenciesStep(SetupState state) {
+    if (state.isInstalling) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(color: Color(0xFF89B4FA)),
+          const SizedBox(height: 24),
+          const Text(
+            '正在修復環境與安裝依賴...',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFCDD6F4),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildLogWindow(state.installLog ?? ''),
+        ],
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.build_circle, size: 64, color: Color(0xFFA6E3A1)),
+          const SizedBox(height: 24),
+          const Text(
+            '環境依賴檢查',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFCDD6F4),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '為了確保 IDE 正常運作，我們需要檢查並安裝以下組件：\n\n• Git (版本控制)\n• 系統套件更新 (pkg upgrade)',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFFBAC2DE), height: 1.5),
+          ),
+          const SizedBox(height: 32),
+          if (state.isGitInstalled) ...[
+             Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E2E),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFA6E3A1)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                   Icon(Icons.check_circle, color: Color(0xFFA6E3A1)),
+                   SizedBox(width: 12),
+                   Text(
+                    'Git 已安裝且環境正常',
+                    style: TextStyle(color: Color(0xFFA6E3A1), fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: () => ref.read(setupServiceProvider.notifier).nextStep(),
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('繼續下一步'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF89B4FA),
+                foregroundColor: const Color(0xFF1E1E2E),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              ),
+            ),
+          ] else ...[
+             const Text(
+              '檢測到 Git 缺失或環境依賴未滿足',
+              style: TextStyle(color: Color(0xFFF38BA8), fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () =>
+                  ref.read(setupServiceProvider.notifier).installDependencies(),
+              icon: const Icon(Icons.auto_fix_high),
+              label: const Text('一鍵修復環境 (推薦)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFA6E3A1),
+                foregroundColor: const Color(0xFF1E1E2E),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              ),
+            ),
+             const SizedBox(height: 16),
+             TextButton(
+              onPressed: () => ref.read(setupServiceProvider.notifier).nextStep(),
+              child: const Text('略過 (不推薦)'),
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFF6C7086)),
+            ),
+          ],
         ],
       ),
     );

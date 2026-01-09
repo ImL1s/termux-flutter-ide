@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_resizable_container/flutter_resizable_container.dart';
+import 'package:go_router/go_router.dart';
 
 import 'code_editor_widget.dart';
 import 'file_tabs_widget.dart';
@@ -896,6 +897,14 @@ class _EditorPageState extends ConsumerState<EditorPage>
             onTap: () {
               Navigator.pop(context);
               showCommandPalette(context, ref);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings_suggest, color: Color(0xFFA6E3A1)),
+            title: const Text('Setup Wizard'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/setup');
             },
           ),
           ListTile(
