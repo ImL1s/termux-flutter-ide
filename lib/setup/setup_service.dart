@@ -104,7 +104,7 @@ class SetupService extends Notifier<SetupState> {
         isGit = gitResult.exitCode == 0;
 
         final result =
-            await sshService.executeWithDetails('flutter --version 2>&1');
+            await sshService.executeWithDetails('source /data/data/com.termux/files/usr/etc/profile.d/flutter.sh 2>/dev/null; flutter --version 2>&1');
         print(
             'TERMUX_IDE_SETUP: flutter --version -> ${result.exitCode}, val: ${result.stdout}');
         isFlutter = result.exitCode == 0 && result.stdout.contains('Flutter');
@@ -139,6 +139,86 @@ class SetupService extends Notifier<SetupState> {
       isInstalling: isFlutter ? false : state.isInstalling,
     );
   }
+
+  /// Install X11 environment (x11-repo, termux-x11-nightly, fix dependencies)
+  Future<void> installX11() async {
+    final sshService = ref.read(sshServiceProvider);
+
+    // Ensure SSH is connected
+    if (!sshService.isConnected) {
+      state = state.copyWith(
+          isInstalling: true, installLog: '正在建立 SSH 連線...\n');
+      try {
+        await sshService.connect();
+      } catch (e) {
+        state = state.copyWith(
+            installLog: '${state.installLog}SSH 連線失敗: $e\n無法繼續安裝 X11。\n');
+        return;
+      }
+    }
+
+    state = state.copyWith(
+        isInstalling: true,
+        installLog: '正在安裝 X11 圖形介面環境...\n這需要安裝多個套件，請稍候。\n\n');
+
+    try {
+      // 1. Install x11-repo
+      state = state.copyWith(
+          installLog: '${state.installLog ?? ""}正在啟用 X11 repository...\n');
+      await sshService.executeWithDetails('pkg install x11-repo -y');
+
+      // 2. Fix broken dependencies (Crucial step observed in E2E)
+      state = state.copyWith(
+          installLog: '${state.installLog ?? ""}正在檢查並修復套件依賴 (apt --fix-broken)...\n');
+      // We ignore exit code here as there might be nothing to fix, but we run it just in case
+      await sshService.executeWithDetails('apt --fix-broken install -y');
+
+      // 3. Install termux-x11-nightly and pulseaudio
+      state = state.copyWith(
+          installLog: '${state.installLog ?? ""}正在安裝 termux-x11-nightly 與 pulseaudio...\n');
+      final installResult = await sshService.executeWithDetails('pkg install termux-x11-nightly pulseaudio -y');
+
+      if (installResult.exitCode != 0) {
+        throw Exception('安裝失敗: ${installResult.stderr}');
+      }
+
+      // 4. Configure environment variables in .bashrc (Persistence)
+      state = state.copyWith(
+          installLog: '${state.installLog ?? ""}正在設定環境變數 (.bashrc)...\n');
+      
+      // Check if DISPLAY is already in bashrc to avoid duplicates
+      final bashrcCheck = await sshService.executeWithDetails('grep -q "DISPLAY=:0" ~/.bashrc');
+      if (bashrcCheck.exitCode != 0) {
+          // Add variables
+          await sshService.executeWithDetails('echo "export TMPDIR=\$PREFIX/tmp" >> ~/.bashrc');
+          await sshService.executeWithDetails('echo "export PKG_CONFIG_PATH=\$PREFIX/lib/pkgconfig" >> ~/.bashrc');
+          await sshService.executeWithDetails('echo "export DISPLAY=:0" >> ~/.bashrc');
+          state = state.copyWith(
+            installLog: '${state.installLog ?? ""}已加入 DISPLAY 與 TMPDIR 設定至 .bashrc\n',
+          );
+      } else {
+        state = state.copyWith(
+            installLog: '${state.installLog ?? ""}環境變數已存在，跳過設定。\n',
+          );
+      }
+
+      state = state.copyWith(
+          isInstalling: false,
+          installLog: '${state.installLog ?? ""}X11 安裝完成！\n請記得在 Android 端安裝 Termux:X11 應用程式。\n',
+          isX11Installed: true,
+      );
+
+      // Refresh environment
+      await checkEnvironment();
+
+    } catch (e) {
+      state = state.copyWith(
+        isInstalling: false,
+        installLog: '${state.installLog ?? ""}X11 安裝發生錯誤: $e\n',
+      );
+    }
+  }
+
 
   /// Go directly to Flutter installation step (via permission step)
   void goToFlutterStep() {
@@ -224,7 +304,7 @@ class SetupService extends Notifier<SetupState> {
           state.copyWith(installLog: '${state.installLog ?? ""}正在下載安裝腳本...\n');
 
       final downloadCmd =
-          '/data/data/com.termux/files/usr/bin/curl -sLf https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_termux_flutter.sh -o ~/install_termux_flutter.sh';
+          '/data/data/com.termux/files/usr/bin/curl -sLf https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_flutter_complete.sh -o ~/install_termux_flutter.sh';
       final downloadResult = await sshService.executeWithDetails(downloadCmd);
 
       if (downloadResult.exitCode != 0) {
@@ -309,7 +389,7 @@ class SetupService extends Notifier<SetupState> {
         // Fix shebangs for the main binary and everything in its bin dir
         final flutterBinDir = flutterPath.replaceAll('/flutter', '');
         await sshService.executeWithDetails(
-            'termux-fix-shebang "$flutterPath" && find "$flutterBinDir" -type f -exec termux-fix-shebang {} \\;');
+            'termux-fix-shebang "$flutterPath" && find "$flutterBinDir" -type f -exec termux-fix-shebang {} \\; && termux-fix-shebang "\$PREFIX/opt/flutter/packages/flutter_tools/bin/tool_backend.sh"');
 
         state = state.copyWith(
           isInstalling: false,
@@ -392,12 +472,13 @@ class SetupService extends Notifier<SetupState> {
     try {
       // Use 'yes n' to answer 'No' to all interactive prompts during upgrade
       // This is crucial for automation
+      // Also install curl and wget which are needed for the flutter install script
       const cmd =
-          'yes n | pkg upgrade -y && pkg install git -y && echo "DEPENDENCIES_INSTALLED"';
+          'yes n | pkg upgrade -y && pkg install git curl wget clang cmake ninja pkg-config gtk3 binutils -y && echo "DEPENDENCIES_INSTALLED"';
 
       state = state.copyWith(
           installLog:
-              '${state.installLog}正在執行: pkg upgrade -y && pkg install git\n(自動拒絕設定檔覆蓋以保持預設)\n\n');
+              '${state.installLog}正在執行: pkg upgrade -y && pkg install git curl wget\n(自動拒絕設定檔覆蓋以保持預設)\n\n');
 
       final result = await sshService.executeWithDetails(cmd);
 

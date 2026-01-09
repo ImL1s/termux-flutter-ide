@@ -671,6 +671,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
             onPressed: () => ref.read(saveTriggerProvider.notifier).trigger(),
             tooltip: 'Save',
           ),
+
           IconButton(
             icon: const Icon(Icons.psychology, size: 28),
             onPressed: _showAIMobile,
@@ -1140,11 +1141,10 @@ class _EditorPageState extends ConsumerState<EditorPage>
       const SnackBar(content: Text('正在執行 flutter doctor...')),
     );
 
-    // Run diagnostic command
-    // Run diagnostic command
-    // Run diagnostic command
+    // Run stable diagnostic command
     final result = await bridge.executeCommand(
-        'bash -c "id; pwd; echo ---; which -a flutter; echo ---; flutter --version 2>&1; echo ---; ls -l \$(which flutter) 2>&1; echo ---; head -n 5 \$(which flutter) 2>&1"');
+        'bash -c "source /data/data/com.termux/files/usr/etc/profile.d/flutter.sh 2>/dev/null; '
+        'flutter --version && flutter doctor"');
 
     if (mounted) {
       showDialog(
@@ -1187,13 +1187,52 @@ class _EditorPageState extends ConsumerState<EditorPage>
   void _runFlutter() {
     final projectPath = ref.read(projectPathProvider);
     if (projectPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please open a Flutter project first'),
-          backgroundColor: Colors.orange,
+    if (projectPath == null) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('No Project Open'),
+          content: const Text(
+              'Running Flutter requires an open project context.\n\nPlease open a project folder via the Explorer.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.folder_open),
+              label: const Text('Open Project Folder'),
+              onPressed: () {
+                Navigator.pop(context);
+                // Trigger Open Folder flow (same as drawer)
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: const Color(0xFF1E1E2E),
+                  builder: (context) => SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.8,
+                    child: DirectoryBrowser(
+                      initialPath: ref.read(currentDirectoryProvider),
+                      onSelect: (path) {
+                        ref.read(currentDirectoryProvider.notifier).setPath(path);
+                        ref.read(projectPathProvider.notifier).set(path);
+                        Navigator.pop(context);
+                        
+                        // Proceed to Runner?
+                        Future.delayed(const Duration(milliseconds: 500), () {
+                          if (mounted) _runFlutter();
+                        });
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       );
       return;
+    }
     }
 
     showModalBottomSheet(

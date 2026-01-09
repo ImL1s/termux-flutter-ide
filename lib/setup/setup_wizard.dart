@@ -488,7 +488,7 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
       case SetupStep.flutter:
         return _buildFlutterStep(state);
       case SetupStep.x11:
-        return _buildX11Step();
+        return _buildX11Step(state);
       case SetupStep.complete:
         return _buildCompleteStep();
     }
@@ -684,7 +684,7 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
           ),
           const SizedBox(height: 16),
           const Text(
-            '為了確保 IDE 正常運作，我們需要檢查並安裝以下組件：\n\n• Git (版本控制)\n• 系統套件更新 (pkg upgrade)',
+            '為了確保 IDE 正常運作，我們需要檢查並安裝以下組件：\n\n• Git (版本控制)\n• 編譯器 (Clang, CMake, Ninja)\n• GUI 函式庫 (GTK3)\n• 系統套件更新 (pkg upgrade)',
             textAlign: TextAlign.center,
             style: TextStyle(color: Color(0xFFBAC2DE), height: 1.5),
           ),
@@ -804,7 +804,7 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
     );
   }
 
-  Widget _buildX11Step() {
+  Widget _buildX11Step(SetupState state) {
     return SingleChildScrollView(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -844,6 +844,27 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
                 const SizedBox(height: 8),
                 _buildCodeBlock(
                     'pkg install x11-repo && pkg install termux-x11-nightly pulseaudio -y'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: state.isInstalling
+                        ? null
+                        : () {
+                            ref
+                                .read(setupServiceProvider.notifier)
+                                .installX11();
+                          },
+                    icon: state.isInstalling 
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.auto_fix_high, size: 18),
+                    label: const Text('一鍵安裝 X11 (自動修復)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFCBA6F7),
+                      foregroundColor: const Color(0xFF1E1E2E),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
                 _buildSection(
                   '2. 安裝 Termux:X11 App',
@@ -862,6 +883,31 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
                     foregroundColor: const Color(0xFF1E1E2E),
                   ),
                 ),
+                if (state.isInstalling) ...[
+                  const SizedBox(height: 24),
+                  const LinearProgressIndicator(color: Color(0xFFCBA6F7)),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF11111B),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF313244)),
+                    ),
+                    height: 100,
+                    width: double.infinity,
+                    child: SingleChildScrollView(
+                      reverse: true,
+                      child: Text(
+                        state.installLog ?? '',
+                        style: const TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 11,
+                            color: Color(0xFFA6ADC8)),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -870,14 +916,16 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               TextButton(
-                onPressed: () =>
-                    ref.read(setupServiceProvider.notifier).nextStep(),
+                onPressed: state.isInstalling 
+                  ? null 
+                  : () => ref.read(setupServiceProvider.notifier).nextStep(),
                 child: const Text('略過 (僅命令列)'),
               ),
               const SizedBox(width: 16),
               FilledButton.icon(
-                onPressed: () =>
-                    ref.read(setupServiceProvider.notifier).nextStep(),
+                onPressed: state.isInstalling
+                  ? null
+                  : () => ref.read(setupServiceProvider.notifier).nextStep(),
                 icon: const Icon(Icons.check),
                 label: const Text('我已完成設定，下一步'),
                 style: FilledButton.styleFrom(

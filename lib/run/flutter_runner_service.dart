@@ -253,8 +253,9 @@ class FlutterRunnerService {
         cmdBuffer.write('export PATH=\$HOME/.termux_ide/bin:\$PATH && ');
       }
 
-      // Always cd to working directory first
-      cmdBuffer.write('cd "$workingDir" && ');
+      // Always cd to working directory first and source flutter profile
+      // Note: We explicitly export PKG_CONFIG_PATH because .bashrc often exits early in non-interactive shells
+      cmdBuffer.write('export TMPDIR=/data/data/com.termux/files/usr/tmp && export PKG_CONFIG_PATH=/data/data/com.termux/files/usr/lib/pkgconfig && source \$HOME/.bashrc 2>/dev/null; cd "$workingDir" && export PATH=/data/data/com.termux/files/usr/bin:/data/data/com.termux/files/usr/opt/flutter/bin:/data/data/com.termux/files/home/flutter/bin:\$PATH && echo "--- DEBUG ENV ---" && env && echo "--- END DEBUG ---" && ');
 
       // Env vars
       if (config.env.isNotEmpty) {
@@ -268,7 +269,7 @@ class FlutterRunnerService {
       cmdBuffer.write(flutterExe);
 
       // Command
-      cmdBuffer.write(' run');
+      cmdBuffer.write(' run -v');
 
       // Program (entry point)
       if (config.program != null) {
