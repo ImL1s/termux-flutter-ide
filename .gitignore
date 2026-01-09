@@ -46,3 +46,12 @@ app.*.map.json
 
 # FVM Version Cache
 .fvm/
+
+# Debug Dumps & Scripts
+*.xml
+*.txt
+*_dump.png
+clean_and_run.sh
+check_tools.sh
+run_debug*.sh
+termux.apk

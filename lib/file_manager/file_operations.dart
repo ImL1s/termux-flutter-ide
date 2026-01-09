@@ -414,8 +414,37 @@ class BridgeFileOperations implements FileOperations {
   @override
   Future<String?> readFile(String path) async {
     try {
-      final result = await _exec('cat "$path"');
-      return result;
+      // Use a marker approach to ensure we can detect successful empty files vs failures
+      // cmd: if file exists, output marker + content + marker, else output error marker
+      final cmd = '[ -f "$path" ] && { echo "__FILE_START__"; cat "$path"; echo "__FILE_END__"; } || echo "__FILE_NOT_FOUND__"';
+      final result = await _bridge.executeCommand(cmd);
+      
+      print('BridgeFileOperations.readFile: exitCode=${result.exitCode}, stdout=[${result.stdout}], stderr=[${result.stderr}]');
+      
+      final output = result.stdout;
+      
+      if (output.contains('__FILE_NOT_FOUND__')) {
+        print('BridgeFileOperations: File not found: $path');
+        return null;
+      }
+      
+      if (output.contains('__FILE_START__') && output.contains('__FILE_END__')) {
+        // Extract content between markers
+        final start = output.indexOf('__FILE_START__') + '__FILE_START__'.length;
+        final end = output.lastIndexOf('__FILE_END__');
+        if (start < end) {
+          final content = output.substring(start, end).trim();
+          return content;
+        }
+      }
+      
+      // Fallback: if markers not found but output is not empty, assume it's the content
+      if (output.isNotEmpty) {
+        return output.trim();
+      }
+      
+      print('BridgeFileOperations: Read file returned empty output');
+      return null;
     } catch (e) {
       print('BridgeFileOperations: Read file failed: $e');
       return null;
@@ -449,7 +478,10 @@ class BridgeFileOperations implements FileOperations {
       {String? org}) async {
     try {
       final orgArg = org != null && org.isNotEmpty ? '--org "$org"' : '';
-      final cmd = 'cd "$parentDir" && flutter create $orgArg "$name"';
+      // Source flutter profile to ensure PATH is correct
+      // Export PATH to include Flutter binary location directly
+      final envSetup = 'export PATH=/data/data/com.termux/files/usr/opt/flutter/bin:/data/data/com.termux/files/home/flutter/bin:\$PATH';
+      final cmd = 'cd "$parentDir" && $envSetup && flutter create $orgArg "$name"';
       print('BridgeFileOperations: Executing $cmd');
       final result = await _exec(cmd);
       print('BridgeFileOperations: Create result: $result');

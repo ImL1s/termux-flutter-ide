@@ -63,13 +63,13 @@ class TermuxBridge {
           'workingDirectory': workingDirectory,
           'background': background,
         },
-      ).timeout(const Duration(seconds: 10), onTimeout: () {
+      ).timeout(const Duration(seconds: 120), onTimeout: () {
         return {
           'success': false,
           'exitCode': -1,
           'stdout': '',
           'stderr':
-              'Command timed out after 10 seconds. Check allow-external-apps in Termux.'
+              'Command timed out after 120 seconds. Check allow-external-apps in Termux or if the command is still running.'
         };
       });
 
@@ -352,14 +352,18 @@ class TermuxBridge {
   /// 不需要 SSH 連線就能安裝 Flutter。
   Future<TermuxResult> installFlutter() {
     const installScript =
-        'https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_termux_flutter.sh';
+        'https://raw.githubusercontent.com/ImL1s/termux-flutter-wsl/master/install_flutter_complete.sh';
     // Ensure termux-tools is installed (for termux-fix-shebang) and git/curl.
     // Then run the install script.
     // Finally, explicitly run termux-fix-shebang on the flutter directory to ensure
     // all scripts (including the main flutter wrapper and dart) have correct paths.
     const cmd = 'termux-wake-lock; '
         'pkg update -y && pkg install -y termux-tools git curl wget unzip; '
-        'curl -sL $installScript | bash; '
+        'cd /data/data/com.termux/files/home && '
+        'curl -sLf "$installScript" -o install_flutter_temp.sh && '
+        'echo "Running install script with auto-confirm..." && '
+        'echo y | bash install_flutter_temp.sh && '
+        'rm install_flutter_temp.sh; '
         'echo "Fixing shebangs..."; '
         'termux-fix-shebang "\$PREFIX/opt/flutter/bin/flutter"; '
         'termux-fix-shebang "\$PREFIX/opt/flutter/bin/dart"; '

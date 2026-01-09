@@ -18,7 +18,7 @@ dependencies:
   # File Management
   file_picker: ^10.3.8
   path_provider: ^2.1.5
-  path: ^1.9.1
+  path: ^1.9.0
   
   # UI Components
   flutter_riverpod: ^2.6.1
@@ -30,13 +30,13 @@ dependencies:
   
   # Settings Persistence
   shared_preferences: ^2.3.0
-  dartssh2: ^2.13.0
+  dartssh2: ^2.11.0
   url_launcher: ^6.3.2
   installed_apps: ^1.2.1
   android_intent_plus: ^5.1.2
-  vm_service: ^15.0.0
+  vm_service: ^14.0.0
   http: ^1.6.0
-  xml: ^6.6.1
+  xml: ^6.5.0
   yaml_edit: ^2.2.3
   riverpod_annotation: ^2.6.1
   flutter_secure_storage: ^9.2.4
@@ -46,9 +46,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
-  mockito: ^5.6.1
-  build_runner: ^2.10.4
+  flutter_lints: ^5.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.0
   integration_test:
     sdk: flutter
   url_launcher_platform_interface: ^2.3.2
