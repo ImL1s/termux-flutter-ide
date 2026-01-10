@@ -684,7 +684,7 @@ class _SetupWizardPageState extends ConsumerState<SetupWizardPage> {
           ),
           const SizedBox(height: 16),
           const Text(
-            '為了確保 IDE 正常運作，我們需要檢查並安裝以下組件：\n\n• Git (版本控制)\n• 編譯器 (Clang, CMake, Ninja)\n• GUI 函式庫 (GTK3)\n• 系統套件更新 (pkg upgrade)',
+            '為了確保 IDE 正常運作，我們需要檢查並安裝以下組件：\n\n• Git (版本控制)\n• 編譯器 (Clang, CMake, Ninja)\n• GUI 函式庫 (GTK3)\n• Dart SDK (LSP 語言服務支援)\n• 系統套件更新 (pkg upgrade)',
             textAlign: TextAlign.center,
             style: TextStyle(color: Color(0xFFBAC2DE), height: 1.5),
           ),

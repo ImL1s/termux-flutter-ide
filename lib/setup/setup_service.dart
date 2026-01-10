@@ -473,8 +473,9 @@ class SetupService extends Notifier<SetupState> {
       // Use 'yes n' to answer 'No' to all interactive prompts during upgrade
       // This is crucial for automation
       // Also install curl and wget which are needed for the flutter install script
+      // Added 'dart' for LSP support (so usage of absolute path /files/usr/bin/dart works)
       const cmd =
-          'yes n | pkg upgrade -y && pkg install git curl wget clang cmake ninja pkg-config gtk3 binutils -y && echo "DEPENDENCIES_INSTALLED"';
+          'yes n | pkg upgrade -y && pkg install git curl wget clang cmake ninja pkg-config gtk3 binutils dart -y && echo "DEPENDENCIES_INSTALLED"';
 
       state = state.copyWith(
           installLog:

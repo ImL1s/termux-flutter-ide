@@ -26,7 +26,7 @@ Future<void> main() async {
 
   // 3. Spawn language server
   print('Spawning dart language-server...');
-  final session = await client.execute('dart language-server --client-id=probe');
+  final session = await client.execute('/data/data/com.termux/files/usr/bin/dart language-server --client-id=probe');
 
   // 4. Send Initialize Request
   final request = {

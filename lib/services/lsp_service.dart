@@ -38,7 +38,7 @@ class LspService {
     try {
       // Use execute to avoid PTY/echo issues, but command usage is key.
       // dart language-server is usually the way.
-      _session = await ssh.client!.execute('dart language-server --client-id=termux-flutter-ide');
+      _session = await ssh.client!.execute('/data/data/com.termux/files/usr/bin/dart language-server --client-id=termux-flutter-ide');
       
       final msgStream = _session!.stdout
           .cast<List<int>>()
