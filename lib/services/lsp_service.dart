@@ -6,6 +6,7 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:json_rpc_2/json_rpc_2.dart' as json_rpc;
 import 'package:async/async.dart';
+import '../editor/diagnostics_provider.dart';
 import 'package:stream_channel/stream_channel.dart';
 import '../termux/ssh_service.dart';
 import '../editor/diagnostics_provider.dart';
@@ -192,6 +193,31 @@ class LspService {
       print('LSP Format Error: $e');
       return null;
     }
+  }
+
+  Future<Map<String, dynamic>?> getDefinition(String filePath, int line, int column) async {
+     // TODO: Implement Logic
+     return null;
+  }
+
+  Future<List<Map<String, dynamic>>?> getReferences(String filePath, int line, int column) async {
+     // TODO: Implement Logic
+     return null;
+  }
+
+  Future<List<Map<String, dynamic>>> getCodeActions(String filePath, int line, int column, List<LspDiagnostic> diagnostics) async {
+     // TODO: Implement Logic
+     return [];
+  }
+
+  Future<Map<String, dynamic>?> renameSymbol(String filePath, int line, int column, String newName) async {
+     // TODO: Implement Logic
+     return null;
+  }
+
+  Future<List<Map<String, dynamic>>> workspaceSymbol(String query) async {
+     // TODO: Implement Logic
+     return [];
   }
 
   // --- Diagnostics Implementation ---

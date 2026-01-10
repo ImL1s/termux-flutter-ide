@@ -23,6 +23,7 @@ import '../core/snackbar_service.dart';
 import 'coding_toolbar.dart';
 import 'editor_request_provider.dart'; // Import Request Provider
 import 'completion/completion_service.dart';
+import 'completion/completion_widget.dart';
 import 'package:termux_flutter_ide/run/breakpoint_service.dart';
 import '../services/lsp_service.dart';
 import 'diagnostics_provider.dart';
@@ -291,6 +292,23 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
                       filePath: _currentFilePath!,
                     ),
                   ),
+                  // Completion Widget Area (Bottom Up)
+                  Positioned(
+                     left: 0,
+                     right: 0,
+                     bottom: 0,
+                     child: Consumer(
+                       builder: (context, ref, child) {
+                         // Only show if we have suggestions
+                         final hasSuggestions = ref.watch(completionProvider).suggestions.isNotEmpty;
+                         if (!hasSuggestions) return const SizedBox.shrink();
+
+                         return CompletionWidget(
+                           onApply: _applySuggestion,
+                         );
+                       },
+                     ),
+                  ),
                 ],
               ),
             ),
@@ -532,6 +550,49 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
       _controller?.text = formatted;
       saveFile();
     }
+  }
+
+  void _applySuggestion(Suggestion suggestion) {
+    if (_controller == null) return;
+    
+    final text = _controller!.text;
+    final selection = _controller!.selection;
+    if (!selection.isValid) return;
+    
+    // Calculate word range to replace
+    // We already do this in _updateCompletion, but we need strictly the range to replace
+    // e.g. if I typed "pri", I want to replace "pri" with "print".
+    
+    final cursor = selection.baseOffset;
+    int wordStart = cursor - 1;
+    while (wordStart >= 0) {
+      final char = text[wordStart];
+      if (!RegExp(r'[a-zA-Z0-9_]').hasMatch(char)) {
+        break;
+      }
+      wordStart--;
+    }
+    wordStart++;
+    
+    // Replace logic
+    final currentWord = text.substring(wordStart, cursor);
+    String insertText = suggestion.insertText;
+    
+    // Basic snippet expansion (very simple)
+    // Remove placeholders like ${1:MyWidget} -> MyWidget
+    // This is naive; robust snippet support needs a proper parser
+    insertText = insertText.replaceAllMapped(RegExp(r'\$\{\d+:([^}]+)\}'), (m) => m.group(1)!);
+    insertText = insertText.replaceAll(RegExp(r'\$\d+'), ''); // Remove $1, $0
+
+    final newText = text.replaceRange(wordStart, cursor, insertText);
+    
+    _controller!.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: wordStart + insertText.length),
+    );
+    
+    ref.read(completionProvider.notifier).clear();
+    _focusNode.requestFocus();
   }
 }
 

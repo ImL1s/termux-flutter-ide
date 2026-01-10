@@ -1318,7 +1318,7 @@ class _EditorPageState extends ConsumerState<EditorPage>
     final references =
         await lsp.getReferences(currentFile, position.line, position.column);
 
-    if (!mounted) return;
+    if (!mounted || references == null) return;
     showReferencesDialog(context, ref, references, 'Symbol');
   }
 
