@@ -64,6 +64,32 @@ class LaunchConfiguration {
       if (mode != null) 'mode': mode,
     };
   }
+
+  LaunchConfiguration copyWith({
+    String? name,
+    String? type,
+    String? request,
+    String? program,
+    List<String>? args,
+    Map<String, String>? env,
+    String? cwd,
+    String? flutterPath,
+    String? deviceId,
+    String? mode,
+  }) {
+    return LaunchConfiguration(
+      name: name ?? this.name,
+      type: type ?? this.type,
+      request: request ?? this.request,
+      program: program ?? this.program,
+      args: args ?? this.args,
+      env: env ?? this.env,
+      cwd: cwd ?? this.cwd,
+      flutterPath: flutterPath ?? this.flutterPath,
+      deviceId: deviceId ?? this.deviceId,
+      mode: mode ?? this.mode,
+    );
+  }
 }
 
 /// Provider for the list of available launch configurations

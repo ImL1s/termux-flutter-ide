@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:android_intent_plus/android_intent.dart';
@@ -67,6 +68,37 @@ class ActiveRunnerSessionIdNotifier extends Notifier<String?> {
   }
 }
 
+/// Provider for available devices
+final availableDevicesProvider = FutureProvider<List<FlutterDevice>>((ref) async {
+  return ref.read(flutterRunnerServiceProvider).getAvailableDevices();
+});
+
+/// Provider for selected device ID
+final selectedDeviceProvider = StateProvider<String?>((ref) => null);
+
+class FlutterDevice {
+  final String name;
+  final String id;
+  final String targetPlatform;
+  final bool isSupported;
+
+  FlutterDevice({
+    required this.name,
+    required this.id,
+    required this.targetPlatform,
+    required this.isSupported,
+  });
+
+  factory FlutterDevice.fromJson(Map<String, dynamic> json) {
+    return FlutterDevice(
+      name: json['name'] as String,
+      id: json['id'] as String,
+      targetPlatform: json['targetPlatform'] as String,
+      isSupported: json['isSupported'] as bool? ?? true,
+    );
+  }
+}
+
 final flutterRunnerServiceProvider = Provider<FlutterRunnerService>((ref) {
   return FlutterRunnerService(ref);
 });
@@ -94,11 +126,42 @@ class FlutterRunnerService {
     }
   }
 
+  /// Get available devices from Flutter
+  Future<List<FlutterDevice>> getAvailableDevices() async {
+    try {
+      final result = await TermuxBridge().executeCommand('flutter devices --machine');
+      if (!result.success) {
+        print('Failed to get devices: ${result.stderr}');
+        return [];
+      }
+
+      final List<dynamic> jsonList = jsonDecode(result.stdout);
+      final devices = jsonList.map((j) => FlutterDevice.fromJson(j)).toList();
+
+      // Ensure 'web-server' is available if web is enabled (heuristic)
+      // or always add it if not present, as it's a valid target for debug
+      if (!devices.any((d) => d.id == 'web-server')) {
+        devices.add(FlutterDevice(
+          name: 'Web Server',
+          id: 'web-server',
+          targetPlatform: 'web-javascript',
+          isSupported: true,
+        ));
+      }
+      
+      return devices;
+    } catch (e) {
+      print('Error parsing devices: $e');
+      return [];
+    }
+  }
+
   /// Main run method with full error handling
   Future<void> run(LaunchConfiguration config) async {
     final stateNotifier = _ref.read(runnerStateProvider.notifier);
     final errorNotifier = _ref.read(runnerErrorProvider.notifier);
     final sessionIdNotifier = _ref.read(activeRunnerSessionIdProvider.notifier);
+    final selectedDeviceId = _ref.read(selectedDeviceProvider); // [NEW]
 
     // 0. Guard against overlapping runs
     final currentState = _ref.read(runnerStateProvider);
@@ -106,6 +169,12 @@ class FlutterRunnerService {
         currentState == RunnerState.running) {
       print('FlutterRunnerService: Run already in progress, ignoring request.');
       return;
+    }
+
+    // [New Logic] If selectedDeviceId is set, override config
+    LaunchConfiguration effectiveConfig = config;
+    if (selectedDeviceId != null && selectedDeviceId.isNotEmpty) {
+       effectiveConfig = config.copyWith(deviceId: selectedDeviceId);
     }
 
     // Clear previous error

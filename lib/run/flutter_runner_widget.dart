@@ -135,6 +135,7 @@ class FlutterRunnerWidget extends ConsumerWidget {
             children: [
               // Config Selector
               Expanded(
+                flex: 3,
                 child: configsAsync.when(
                   data: (configs) {
                     if (configs.isEmpty) {
@@ -144,7 +145,6 @@ class FlutterRunnerWidget extends ConsumerWidget {
                     // Select first if none selected
                     final current = selectedConfig ?? configs.first;
                     if (selectedConfig == null) {
-                      // Schedule update
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         ref
                             .read(selectedLaunchConfigProvider.notifier)
@@ -164,7 +164,7 @@ class FlutterRunnerWidget extends ConsumerWidget {
                       items: configs.map((config) {
                         return DropdownMenuItem<LaunchConfiguration>(
                           value: config,
-                          child: Text(config.name),
+                          child: Text(config.name, overflow: TextOverflow.ellipsis),
                         );
                       }).toList(),
                       onChanged: (config) {
@@ -180,6 +180,60 @@ class FlutterRunnerWidget extends ConsumerWidget {
                       const Icon(Icons.error_outline, color: Colors.red),
                 ),
               ),
+              const SizedBox(width: 8),
+
+              // Device Selector [NEW]
+              Expanded(
+                flex: 2,
+                child: Consumer(
+                  builder: (context, ref, _) {
+                    final devicesAsync = ref.watch(availableDevicesProvider);
+                    final selectedId = ref.watch(selectedDeviceProvider);
+
+                    return devicesAsync.when(
+                      data: (devices) {
+                        if (devices.isEmpty) return const SizedBox();
+                        
+                        // Auto-select first if null
+                        final currentId = selectedId ?? devices.first.id;
+                        if (selectedId == null) {
+                           WidgetsBinding.instance.addPostFrameCallback((_) {
+                             ref.read(selectedDeviceProvider.notifier).state = currentId;
+                           });
+                        }
+                        
+                        // Find active object
+                        final active = devices.firstWhere((d) => d.id == currentId, orElse: () => devices.first);
+
+                        return DropdownButton<String>(
+                          value: active.id,
+                          isExpanded: true,
+                           dropdownColor: const Color(0xFF2E2E3E),
+                          underline: const SizedBox(),
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                           icon: const Icon(Icons.smartphone, color: Colors.grey, size: 16),
+                          items: devices.map((device) {
+                            return DropdownMenuItem<String>(
+                              value: device.id,
+                              child: Text(
+                                device.name, 
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12)
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (id) {
+                            ref.read(selectedDeviceProvider.notifier).state = id;
+                          },
+                        );
+                      },
+                      loading: () => const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      error: (_,__) => const Icon(Icons.portable_wifi_off, size: 16, color: Colors.grey),
+                    );
+                  }
+                ),
+              ),
+
               const SizedBox(width: 8),
 
               // Edit Config
