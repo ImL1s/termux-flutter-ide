@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xterm/xterm.dart';
 import '../termux/termux_bridge.dart';
 
@@ -217,6 +219,22 @@ class TerminalSession {
 
   final TerminalController controller;
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'initialDirectory': initialDirectory,
+    };
+  }
+
+  factory TerminalSession.fromJson(Map<String, dynamic> json) {
+    return TerminalSession(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      initialDirectory: json['initialDirectory'] as String?,
+    );
+  }
+
   void dispose() {
     bridge = null;
     isConnected = false;
@@ -250,7 +268,8 @@ class TerminalSessionsState {
 class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
   @override
   TerminalSessionsState build() {
-    // Start with one session
+    // Attempt restoration on init
+    Future.microtask(() => restoreSessions());
     return TerminalSessionsState();
   }
 
@@ -259,6 +278,7 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
       sessions: [...state.sessions, session],
       activeSessionId: session.id,
     );
+    saveSessions();
   }
 
   Future<String> createSession({String? name, String? initialDirectory}) async {
@@ -291,6 +311,7 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
     }
 
     state = state.copyWith(sessions: newSessions, activeSessionId: newActiveId);
+    saveSessions();
   }
 
   Future<void> connectSession(TerminalSession session) async {
@@ -317,7 +338,7 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
           .onDataReceived('\x1B[1;34mWorking directory: $homeDir\x1B[0m\r\n');
       session.onDataReceived('\r\n\x1B[1;33m\$ \x1B[0m');
 
-      // Wire up terminal input - execute commands when user presses Enter
+      // Wire up terminal input
       session.terminal.onOutput = (data) {
         session.write(data);
       };
@@ -333,6 +354,36 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionsState> {
       session.state = SessionState.failed;
       session.lastError = e.toString();
       state = state.copyWith();
+    }
+  }
+
+  // [Persistence]
+  Future<void> saveSessions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = state.sessions.map((s) => jsonEncode(s.toJson())).toList();
+      await prefs.setStringList('terminal_sessions', list);
+    } catch (e) {
+      print('Failed to save terminal sessions: $e');
+    }
+  }
+
+  Future<void> restoreSessions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('terminal_sessions');
+      if (list != null && list.isNotEmpty) {
+        final sessions = list.map((s) => TerminalSession.fromJson(jsonDecode(s))).toList();
+        state = state.copyWith(sessions: sessions, activeSessionId: sessions.isNotEmpty ? sessions.first.id : null);
+        
+        // Reconnect all restored sessions
+        for (final session in sessions) {
+           // Don't await individually to speed up UI
+           connectSession(session);
+        }
+      }
+    } catch (e) {
+      print('Failed to restore terminal sessions: $e');
     }
   }
 }
