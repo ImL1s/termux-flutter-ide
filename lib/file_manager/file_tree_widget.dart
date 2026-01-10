@@ -4,6 +4,7 @@ import '../core/providers.dart';
 import '../theme/app_theme.dart';
 
 import 'file_operations.dart';
+import '../editor/flutter_create_dialog.dart';
 import '../core/scrollable_with_scrollbar.dart';
 
 class FileTreeWidget extends ConsumerStatefulWidget {
@@ -55,15 +56,42 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: const Text(
-        'EXPLORER',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: AppTheme.textSecondary,
-          letterSpacing: 1.2,
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'EXPLORER',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textSecondary,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_box_outlined, size: 16),
+            onPressed: _handleCreateProject,
+            tooltip: 'New Flutter Project',
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            padding: EdgeInsets.zero,
+          ),
+          IconButton(
+            icon: const Icon(Icons.folder_open_outlined, size: 16),
+            onPressed: _openProject,
+            tooltip: 'Open Folder',
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            padding: EdgeInsets.zero,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, size: 16),
+            onPressed: _refresh,
+            tooltip: 'Refresh All',
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            padding: EdgeInsets.zero,
+          ),
+        ],
       ),
     );
   }
@@ -303,6 +331,12 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
     final success = await ops.rename(src.path, newPath);
 
     if (success) {
+      // Update open files and current file providers
+      ref.read(openFilesProvider.notifier).renameFile(src.path, newPath);
+      if (ref.read(currentFileProvider) == src.path) {
+        ref.read(currentFileProvider.notifier).select(newPath);
+      }
+
       final srcDir = src.path.substring(0, src.path.lastIndexOf('/'));
       // Refresh both source parent and destination
       _cachedContents.remove(srcDir);
@@ -310,12 +344,14 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
       // If we moved a directory that was expanded, update expanded set
       if (src.isDirectory && _expandedDirs.contains(src.path)) {
         _expandedDirs.remove(src.path);
+        _expandedDirs.add(newPath); // Keep it expanded in new location?
       }
       if (mounted) {
         // Use Future.wait to load both
         await Future.wait([
           _loadDirectory(srcDir),
           _loadDirectory(dest.path),
+          if (src.isDirectory) _loadDirectory(newPath),
         ]);
       }
     }
@@ -483,6 +519,12 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
 
               final success = await ops.rename(item.path, newPath);
               if (success) {
+                // Update open files and current file providers
+                ref.read(openFilesProvider.notifier).renameFile(item.path, newPath);
+                if (ref.read(currentFileProvider) == item.path) {
+                  ref.read(currentFileProvider.notifier).select(newPath);
+                }
+                
                 _cachedContents.remove(parentPath);
                 _loadDirectory(parentPath);
               }
@@ -521,6 +563,13 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
               }
 
               if (success) {
+                // Remove from editor if open (recursively if directory)
+                if (item.isDirectory) {
+                  ref.read(openFilesProvider.notifier).removeUnderPath(item.path);
+                } else {
+                  ref.read(openFilesProvider.notifier).remove(item.path);
+                }
+                
                 final parentPath = item.path.substring(
                   0,
                   item.path.lastIndexOf('/'),
@@ -580,6 +629,14 @@ class _FileTreeWidgetState extends ConsumerState<FileTreeWidget> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  void _handleCreateProject() async {
+    final currentDir = ref.read(currentDirectoryProvider);
+    final result = await showFlutterCreateDialog(context, currentDir);
+    if (result == true && mounted) {
+      _refresh();
     }
   }
 

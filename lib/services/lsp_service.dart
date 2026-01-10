@@ -1,162 +1,133 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:json_rpc_2/json_rpc_2.dart' as json_rpc;
+import 'package:async/async.dart';
+import 'package:stream_channel/stream_channel.dart';
 import '../termux/ssh_service.dart';
 import '../editor/diagnostics_provider.dart';
-import '../termux/termux_paths.dart';
 
+/// Manages the connection to the Dart Analysis Server via LSP over SSH.
 class LspService {
   final Ref ref;
-  SSHClient? _client;
+  json_rpc.Peer? _peer;
   SSHSession? _session;
-  int _requestId = 0;
   bool _isStarted = false;
   bool get isStarted => _isStarted;
-  final Map<int, Completer<Map<String, dynamic>>> _pendingRequests = {};
-
-  final _responseController =
-      StreamController<Map<String, dynamic>>.broadcast();
-  Stream<Map<String, dynamic>> get responses => _responseController.stream;
+  
+  // Track current project path
+  String? _currentRootPath;
 
   LspService(this.ref);
 
-  Future<bool> start() async {
-    if (_isStarted) return true;
+  Future<bool> start(String rootPath) async {
+    if (_isStarted && _currentRootPath == rootPath) return true;
+    if (_isStarted) await stop(); // Restart if path changed
 
     final ssh = ref.read(sshServiceProvider);
     if (!ssh.isConnected) {
       await ssh.connect();
     }
-
     if (!ssh.isConnected) return false;
-    _client = ssh.client;
 
+    print('LSP: Starting dart language-server for $rootPath...');
     try {
-      _session = await _client!.execute(
-          '${TermuxPaths.dartExecutable} ${TermuxPaths.analysisServerSnapshot} --lsp');
+      // Use execute to avoid PTY/echo issues, but command usage is key.
+      // dart language-server is usually the way.
+      _session = await ssh.client!.execute('dart language-server --client-id=termux-flutter-ide');
+      
+      final msgStream = _session!.stdout
+          .cast<List<int>>()
+          .transform(_LspPacketDecoder());
+
+      final msgSink = StreamSinkTransformer<String, List<int>>.fromHandlers(
+        handleData: (data, sink) {
+          final encoded = utf8.encode(data);
+          final header = 'Content-Length: ${encoded.length}\r\n\r\n';
+          sink.add(utf8.encode(header));
+          sink.add(encoded);
+        },
+      ).bind(_session!.stdin);
+
+      final channel = StreamChannel(msgStream, msgSink);
+
+      _peer = json_rpc.Peer(channel, onUnhandledError: (e, stack) {
+        print('LSP Peer Error: $e');
+      });
+
+      // Register notifications
+      _peer!.registerMethod('window/logMessage', (json_rpc.Parameters params) {
+        // final type = params['type'].asInt;
+        // final message = params['message'].asString;
+        // print('LSP Log: $message');
+      });
+
+      _peer!.registerMethod('textDocument/publishDiagnostics', (json_rpc.Parameters params) {
+         _handleDiagnostics(params.value as Map<String, dynamic>);
+      });
+
+      _peer!.listen();
+      
+      await _initialize(rootPath);
+      _currentRootPath = rootPath;
       _isStarted = true;
+      return true;
     } catch (e) {
       print('LSP Start Error: $e');
       return false;
     }
+  }
 
-    // Listen to output
-    _listenToOutput();
-
-    // Send initialize
-    await sendRequest('initialize', {
+  Future<void> _initialize(String rootPath) async {
+    final params = {
       'processId': null,
-      'rootPath': TermuxPaths.home,
-      'rootUri': 'file://${TermuxPaths.home}',
+      'rootUri': 'file://$rootPath',
       'capabilities': {
         'textDocument': {
+          'synchronization': {
+            'dynamicRegistration': true,
+            'willSave': false,
+            'willSaveWaitUntil': false,
+            'didSave': true,
+          },
           'completion': {
-            'completionItem': {'snippetSupport': true}
+            'dynamicRegistration': true,
+            'completionItem': {
+              'snippetSupport': true,
+              'resolveSupport': {'properties': ['documentation', 'detail']}
+            }
+          },
+          'hover': {
+            'dynamicRegistration': true,
+            'contentFormat': ['markdown', 'plaintext']
           }
-        }
+        },
+         'workspace': {
+            'configuration': true,
+         }
       },
-    });
+      'trace': 'off' 
+    };
 
-    await sendRequest('initialized', {});
-
-    return true;
+    await _peer!.sendRequest('initialize', params);
+    _peer!.sendNotification('initialized', {});
   }
 
-  void _listenToOutput() {
-    String buffer = '';
-    _session?.stdout.cast<List<int>>().transform(utf8.decoder).listen((data) {
-      buffer += data;
-      _processBuffer(buffer);
-    });
+  Future<void> stop() async {
+    _peer?.close();
+    _session?.close(); // This kills the remote process
+    _isStarted = false;
+    _currentRootPath = null;
   }
 
-  void _processBuffer(String data) {
-    // Basic LSP framing:
-    // Content-Length: XXX\r\n\r\n{...}
-
-    final regex = RegExp(r'Content-Length: (\d+)\r\n\r\n');
-    final match = regex.firstMatch(data);
-
-    if (match != null) {
-      final length = int.parse(match.group(1)!);
-      final startIndex = match.end;
-      if (data.length >= startIndex + length) {
-        final content = data.substring(startIndex, startIndex + length);
-        try {
-          final json = jsonDecode(content);
-          _handleMessage(json);
-        } catch (e) {
-          print('LSP Decode Error: $e');
-        }
-        // Recursively process remaining data
-        _processBuffer(data.substring(startIndex + length));
-      }
-    }
-  }
-
-  void _handleMessage(Map<String, dynamic> json) {
-    if (json.containsKey('id')) {
-      final id = json['id'];
-      if (_pendingRequests.containsKey(id)) {
-        _pendingRequests[id]!.complete(json);
-        _pendingRequests.remove(id);
-      }
-    }
-
-    // Handle notifications
-    if (json.containsKey('method')) {
-      final method = json['method'];
-      if (method == 'textDocument/publishDiagnostics') {
-        _handleDiagnostics(json['params']);
-      }
-    }
-
-    _responseController.add(json);
-  }
-
-  void _handleDiagnostics(Map<String, dynamic> params) {
-    final uri = params['uri'] as String;
-    final diagnosticsJson = params['diagnostics'] as List;
-    final diagnostics = diagnosticsJson
-        .map((j) => LspDiagnostic.fromJson(j as Map<String, dynamic>))
-        .toList();
-
-    ref.read(diagnosticsProvider.notifier).updateDiagnostics(uri, diagnostics);
-  }
-
-  Future<Map<String, dynamic>> sendRequest(
-      String method, Map<String, dynamic> params) async {
-    final id = ++_requestId;
-    final completer = Completer<Map<String, dynamic>>();
-    _pendingRequests[id] = completer;
-
-    final request = jsonEncode({
-      'jsonrpc': '2.0',
-      'id': id,
-      'method': method,
-      'params': params,
-    });
-
-    final header = 'Content-Length: ${request.length}\r\n\r\n';
-    _session?.stdin.add(utf8.encode(header + request));
-
-    // Special case for notifications (no response expected)
-    if (method == 'initialized' || method.startsWith(r'$/')) {
-      _pendingRequests.remove(id);
-      return {};
-    }
-
-    return completer.future.timeout(const Duration(seconds: 5), onTimeout: () {
-      _pendingRequests.remove(id);
-      return {
-        'error': {'message': 'Request timeout'}
-      };
-    });
-  }
+  // --- Notification Methods ---
 
   Future<void> notifyDidOpen(String filePath, String content) async {
-    await sendNotification('textDocument/didOpen', {
+    if (!_isStarted) return;
+    _peer!.sendNotification('textDocument/didOpen', {
       'textDocument': {
         'uri': 'file://$filePath',
         'languageId': 'dart',
@@ -167,7 +138,8 @@ class LspService {
   }
 
   Future<void> notifyDidChange(String filePath, String content) async {
-    await sendNotification('textDocument/didChange', {
+    if (!_isStarted) return;
+    _peer!.sendNotification('textDocument/didChange', {
       'textDocument': {
         'uri': 'file://$filePath',
         'version': DateTime.now().millisecondsSinceEpoch,
@@ -178,189 +150,137 @@ class LspService {
     });
   }
 
-  Future<Map<String, dynamic>> sendNotification(
-      String method, Map<String, dynamic> params) async {
-    final request = jsonEncode({
-      'jsonrpc': '2.0',
-      'method': method,
-      'params': params,
-    });
-
-    final header = 'Content-Length: ${request.length}\r\n\r\n';
-    _session?.stdin.add(utf8.encode(header + request));
-    return {};
-  }
-
-  Future<Map<String, dynamic>?> getDefinition(
-      String filePath, int line, int column) async {
-    final uri = 'file://$filePath';
-    final response = await sendRequest('textDocument/definition', {
-      'textDocument': {'uri': uri},
-      'position': {'line': line, 'character': column},
-    });
-
-    if (response.containsKey('result')) {
-      final result = response['result'];
-      if (result == null) return null;
-
-      // result can be Location | List<Location> | List<LocationLink>
-      if (result is List && result.isNotEmpty) {
-        return result.first as Map<String, dynamic>;
-      } else if (result is Map) {
-        return result as Map<String, dynamic>;
-      }
-    }
-    return null;
-  }
-
-  Future<List<Map<String, dynamic>>> getReferences(
-      String filePath, int line, int column) async {
-    final uri = 'file://$filePath';
-    final response = await sendRequest('textDocument/references', {
-      'textDocument': {'uri': uri},
-      'position': {'line': line, 'character': column},
-      'context': {'includeDeclaration': true},
-    });
-
-    if (response.containsKey('result')) {
-      final result = response['result'];
-      if (result is List) {
-        return result.cast<Map<String, dynamic>>();
-      }
-    }
-    return [];
-  }
+  // --- Request Methods ---
 
   Future<List<Map<String, dynamic>>> getCompletions(
       String filePath, int line, int column) async {
-    final uri = 'file://$filePath';
-    final response = await sendRequest('textDocument/completion', {
-      'textDocument': {'uri': uri},
-      'position': {'line': line, 'character': column},
-    });
+    if (!_isStarted) return [];
+    
+    try {
+      final response = await _peer!.sendRequest('textDocument/completion', {
+        'textDocument': {'uri': 'file://$filePath'},
+        'position': {'line': line, 'character': column},
+      });
 
-    if (response.containsKey('result')) {
-      final result = response['result'];
-      if (result is List) {
-        return result.cast<Map<String, dynamic>>();
-      } else if (result is Map && result.containsKey('items')) {
-        return (result['items'] as List).cast<Map<String, dynamic>>();
+      if (response == null) return [];
+
+      if (response is List) {
+        return response.cast<Map<String, dynamic>>();
+      } else if (response is Map && response.containsKey('items')) {
+        return (response['items'] as List).cast<Map<String, dynamic>>();
       }
+      return [];
+    } catch (e) {
+      print('LSP Completion Error: $e');
+      return [];
     }
-    return [];
   }
 
   Future<String?> formatDocument(String filePath) async {
-    final uri = 'file://$filePath';
-    final response = await sendRequest('textDocument/formatting', {
-      'textDocument': {'uri': uri},
-      'options': {
-        'tabSize': 2,
-        'insertSpaces': true,
-      },
-    });
+    if (!_isStarted) return null;
+    try {
+      final response = await _peer!.sendRequest('textDocument/formatting', {
+        'textDocument': {'uri': 'file://$filePath'},
+        'options': {'tabSize': 2, 'insertSpaces': true}
+      });
+      
+      if (response is List && response.isNotEmpty) {
+        return response.first['newText'] as String;
+      }
+      return null;
+    } catch (e) {
+      print('LSP Format Error: $e');
+      return null;
+    }
+  }
 
-    if (response.containsKey('result')) {
-      final result = response['result'];
-      if (result is List && result.isNotEmpty) {
-        // Result is a list of TextEdit
-        // For simplicity, we assume it's one large edit or we'd need to apply them in order
-        // Dart formatting usually returns one large edit replacing the whole file.
-        // Actually, let's just return the first one's newText if it covers the whole document.
-        // Better: just use the results.
-        return result.first['newText'] as String;
+  // --- Diagnostics Implementation ---
+
+  void _handleDiagnostics(Map<String, dynamic> params) {
+    final uri = params['uri'] as String;
+    final diagnosticsJson = params['diagnostics'] as List;
+    
+    final diagnostics = diagnosticsJson.map((j) {
+      final range = j['range'];
+      final start = range['start'];
+      final end = range['end'];
+      
+      // Default to hint if severity is missing or unknown
+      DiagnosticSeverity severity = DiagnosticSeverity.hint;
+      if (j['severity'] != null) {
+         final s = j['severity'] as int;
+         if (s == 1) severity = DiagnosticSeverity.error;
+         else if (s == 2) severity = DiagnosticSeverity.warning;
+         else if (s == 3) severity = DiagnosticSeverity.information;
+      }
+
+      return LspDiagnostic(
+        range: LspRange(
+          startLine: start['line'],
+          startColumn: start['character'],
+          endLine: end['line'],
+          endColumn: end['character'],
+        ),
+        severity: severity,
+        message: j['message'] ?? '',
+        code: j['code']?.toString(),
+        source: j['source'],
+      );
+    }).toList();
+
+    ref.read(diagnosticsProvider.notifier).updateDiagnostics(uri, diagnostics);
+  }
+}
+
+/// Decodes LSP headers and yields JSON strings
+class _LspPacketDecoder extends StreamTransformerBase<List<int>, String> {
+  @override
+  Stream<String> bind(Stream<List<int>> stream) async* {
+    final buffer = <int>[];
+    int? contentLength;
+    
+    await for (final chunk in stream) {
+      buffer.addAll(chunk);
+
+      while (true) {
+        if (contentLength == null) {
+          final headerEnd = _indexOfDoubleCRLF(buffer);
+          if (headerEnd == -1) break;
+
+          final headerString = utf8.decode(buffer.sublist(0, headerEnd));
+          final lines = headerString.split('\r\n');
+          for (final line in lines) {
+             final lower = line.toLowerCase();
+             if (lower.startsWith('content-length:')) {
+               contentLength = int.parse(line.substring(15).trim());
+             }
+          }
+          buffer.removeRange(0, headerEnd + 4);
+        }
+
+        if (contentLength != null) {
+          if (buffer.length >= contentLength!) {
+            final bodyBytes = buffer.sublist(0, contentLength!);
+            final bodyString = utf8.decode(bodyBytes);
+            
+            buffer.removeRange(0, contentLength!);
+            contentLength = null; 
+            yield bodyString;
+          } else {
+            break;
+          }
+        }
       }
     }
-    return null;
   }
 
-  Future<List<Map<String, dynamic>>> getCodeActions(String filePath, int line,
-      int column, List<LspDiagnostic> diagnostics) async {
-    final uri = 'file://$filePath';
-    final response = await sendRequest('textDocument/codeAction', {
-      'textDocument': {'uri': uri},
-      'range': {
-        'start': {'line': line, 'character': column},
-        'end': {'line': line, 'character': column},
-      },
-      'context': {
-        'diagnostics': diagnostics
-            .map((d) => {
-                  'range': {
-                    'start': {
-                      'line': d.range.startLine,
-                      'character': d.range.startColumn
-                    },
-                    'end': {
-                      'line': d.range.endLine,
-                      'character': d.range.endColumn
-                    },
-                  },
-                  'severity': _severityToInt(d.severity),
-                  'message': d.message,
-                  'code': d.code,
-                  'source': d.source,
-                })
-            .toList(),
-      },
-    });
-
-    if (response.containsKey('result')) {
-      final result = response['result'];
-      if (result is List) {
-        return result.cast<Map<String, dynamic>>();
+  int _indexOfDoubleCRLF(List<int> bytes) {
+    for (int i = 0; i < bytes.length - 3; i++) {
+      if (bytes[i] == 13 && bytes[i+1] == 10 && bytes[i+2] == 13 && bytes[i+3] == 10) {
+        return i;
       }
     }
-    return [];
-  }
-
-  int _severityToInt(DiagnosticSeverity severity) {
-    switch (severity) {
-      case DiagnosticSeverity.error:
-        return 1;
-      case DiagnosticSeverity.warning:
-        return 2;
-      case DiagnosticSeverity.information:
-        return 3;
-      case DiagnosticSeverity.hint:
-        return 4;
-    }
-  }
-
-  /// Rename Symbol
-  Future<Map<String, dynamic>?> renameSymbol(
-      String filePath, int line, int column, String newName) async {
-    final uri = 'file://$filePath';
-    final response = await sendRequest('textDocument/rename', {
-      'textDocument': {'uri': uri},
-      'position': {'line': line, 'character': column},
-      'newName': newName,
-    });
-
-    if (response.containsKey('result')) {
-      return response['result'] as Map<String, dynamic>?;
-    }
-    return null;
-  }
-
-  /// Workspace Symbol Search
-  Future<List<Map<String, dynamic>>> workspaceSymbol(String query) async {
-    final response = await sendRequest('workspace/symbol', {
-      'query': query,
-    });
-
-    if (response.containsKey('result')) {
-      final result = response['result'];
-      if (result is List) {
-        return result.cast<Map<String, dynamic>>();
-      }
-    }
-    return [];
-  }
-
-  void stop() {
-    _session?.close();
-    _session = null;
+    return -1;
   }
 }
 

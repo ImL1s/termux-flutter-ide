@@ -18,6 +18,20 @@ class OpenFilesNotifier extends Notifier<List<String>> {
   void remove(String path) {
     state = state.where((f) => f != path).toList();
   }
+
+  void renameFile(String oldPath, String newPath) {
+    state = state.map((f) {
+      if (f == oldPath) return newPath;
+      if (f.startsWith('$oldPath/')) {
+        return f.replaceFirst(oldPath, newPath);
+      }
+      return f;
+    }).toList();
+  }
+
+  void removeUnderPath(String path) {
+    state = state.where((f) => f != path && !f.startsWith('$path/')).toList();
+  }
 }
 
 /// Current active file

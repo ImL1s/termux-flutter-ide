@@ -318,8 +318,12 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
 
       if (path.endsWith('.dart')) {
         final lsp = ref.read(lspServiceProvider);
-        unawaited(
-            lsp.start().then((_) => lsp.notifyDidOpen(path, content ?? '')));
+        final projectPath = ref.read(projectPathProvider);
+        if (projectPath != null) {
+          unawaited(lsp
+              .start(projectPath)
+              .then((_) => lsp.notifyDidOpen(path, content ?? '')));
+        }
       }
 
       if (content != null) {

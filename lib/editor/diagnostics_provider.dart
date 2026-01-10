@@ -48,13 +48,22 @@ class LspDiagnostic {
   factory LspDiagnostic.fromJson(Map<String, dynamic> json) {
     final severityInt = json['severity'] as int?;
     final severity = _mapSeverity(severityInt);
+    
+    final rangeJson = json['range'] as Map<String, dynamic>? ?? {};
+    final start = rangeJson['start'] as Map<String, dynamic>? ?? {};
+    final end = rangeJson['end'] as Map<String, dynamic>? ?? {};
 
     return LspDiagnostic(
-      range: LspRange.fromJson(json['range']),
+      range: LspRange(
+        startLine: start['line'] as int? ?? 0,
+        startColumn: start['character'] as int? ?? 0,
+        endLine: end['line'] as int? ?? 0,
+        endColumn: end['character'] as int? ?? 0,
+      ),
       severity: severity,
       code: json['code']?.toString(),
-      source: json['source'],
-      message: json['message'],
+      source: json['source'] as String?,
+      message: json['message'] as String? ?? '',
     );
   }
 

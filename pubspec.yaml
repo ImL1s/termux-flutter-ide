@@ -40,6 +40,8 @@ dependencies:
   yaml_edit: ^2.2.3
   riverpod_annotation: ^2.6.1
   flutter_secure_storage: ^9.2.4
+  json_rpc_2: ^4.0.0
+  stream_channel: ^2.1.2
   
   # Note: Foldable device support uses Flutter's built-in DisplayFeature API
 
